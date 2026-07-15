@@ -122,7 +122,59 @@ export const goods = new Elysia({ prefix: "/goods" })
 });
 
 // -----------------------------------------------------------------------
-// 测试：空目录
+// 测试：Monorepo 中 controller 在 server/ 目录（apps/web/server/）
+// -----------------------------------------------------------------------
+describe("Monorepo with server/ path", () => {
+  beforeAll(() => {
+    if (existsSync(TMP_ROOT)) rmSync(TMP_ROOT, { recursive: true });
+    mkdirSync(TMP_ROOT, { recursive: true });
+    writeFileSync(join(TMP_ROOT, "package.json"), JSON.stringify({ name: "web-project" }), "utf-8");
+
+    // controller 放在 apps/web/server/controllers/ 而非 src/ 下
+    mkdirSync(join(TMP_ROOT, "apps/web/server/controllers"), { recursive: true });
+    writeFileSync(join(TMP_ROOT, "apps/web/server/controllers/user.controller.ts"), `
+import { Elysia } from "elysia";
+export const userController = new Elysia({ prefix: "/users" })
+  .get("/", () => "list");
+`, "utf-8");
+    writeFileSync(join(TMP_ROOT, "apps/web/server/user.service.ts"), "// service", "utf-8");
+
+    // 另一个 app 用 src/ 路径（b2b-api 风格）
+    mkdirSync(join(TMP_ROOT, "apps/b2b-api/src/server/controllers"), { recursive: true });
+    writeFileSync(join(TMP_ROOT, "apps/b2b-api/src/server/controllers/goods.controller.ts"), `
+import { Elysia } from "elysia";
+export const goodsController = new Elysia({ prefix: "/goods" })
+  .get("/", () => "list");
+`, "utf-8");
+  });
+
+  afterAll(() => {
+    if (existsSync(TMP_ROOT)) rmSync(TMP_ROOT, { recursive: true });
+  });
+
+  it("识别 web 应用（server/ 目录下的 controller）", () => {
+    const config = detectLayout(TMP_ROOT);
+    const web = config.apps.find((a) => a.appName === "web");
+    expect(web).toBeDefined();
+    expect(web!.controllersDir).toContain("server");
+    expect(web!.controllersDir).toContain("controllers");
+    expect(web!.serviceDir).toContain("server");
+  });
+
+  it("识别 b2b-api 应用（src/server/ 目录下的 controller）", () => {
+    const config = detectLayout(TMP_ROOT);
+    const b2b = config.apps.find((a) => a.appName === "b2b-api");
+    expect(b2b).toBeDefined();
+    expect(b2b!.controllersDir).toContain("src");
+    expect(b2b!.controllersDir).toContain("controllers");
+  });
+
+  it("structureTree 同时反映两种路径", () => {
+    const tree = detectLayout(TMP_ROOT).structureTree;
+    expect(tree).toContain("user.controller.ts");
+    expect(tree).toContain("goods.controller.ts");
+  });
+});
 // -----------------------------------------------------------------------
 describe("空目录", () => {
   beforeAll(() => {

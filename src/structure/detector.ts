@@ -67,12 +67,22 @@ function scanCommonLayer(rootDir: string): CommonLayout | null {
   };
 }
 
+/** 在多个候选目录中扫描指定层的文件 */
+function scanLayerFiles(appRootAbs: string, layer: Layer): string[] {
+  const candidates = ["src", "server"].map((d) => resolve(appRootAbs, d));
+  const files: string[] = [];
+  for (const dir of candidates) {
+    if (!existsSync(dir)) continue;
+    files.push(...getLayerFilePaths(dir, layer));
+  }
+  return files;
+}
+
 /** 扫描单个app目录，提取controller、server目录 */
 function scanSingleApp(appRootAbs: string): AppLayout {
   const appName = basename(appRootAbs);
-  const srcRoot = resolve(appRootAbs, "src");
-  const ctrlFiles = getLayerFilePaths(srcRoot, "controller");
-  const serviceFiles = getLayerFilePaths(srcRoot, "service");
+  const ctrlFiles = scanLayerFiles(appRootAbs, "controller");
+  const serviceFiles = scanLayerFiles(appRootAbs, "service");
 
   let controllersDir: string | null = null;
   if (ctrlFiles.length > 0) controllersDir = dirname(ctrlFiles[0]);
@@ -81,7 +91,7 @@ function scanSingleApp(appRootAbs: string): AppLayout {
 
   return {
     appName,
-    appRoot: srcRoot,
+    appRoot: resolve(appRootAbs, "src"),
     controllersDir,
     serviceDir,
   };
@@ -89,9 +99,8 @@ function scanSingleApp(appRootAbs: string): AppLayout {
 
 /** 扫描单体项目（无apps/packages）生成虚拟main应用 */
 function scanSingleAppMode(rootDir: string): AppLayout {
-  const srcRoot = resolve(rootDir, "src");
-  const ctrlFiles = getLayerFilePaths(srcRoot, "controller");
-  const serviceFiles = getLayerFilePaths(srcRoot, "service");
+  const ctrlFiles = scanLayerFiles(rootDir, "controller");
+  const serviceFiles = scanLayerFiles(rootDir, "service");
 
   let controllersDir: string | null = null;
   if (ctrlFiles.length > 0) controllersDir = dirname(ctrlFiles[0]);
@@ -100,7 +109,7 @@ function scanSingleAppMode(rootDir: string): AppLayout {
 
   return {
     appName: "main",
-    appRoot: srcRoot,
+    appRoot: resolve(rootDir, "src"),
     controllersDir,
     serviceDir,
   };
