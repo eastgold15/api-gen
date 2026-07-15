@@ -123,6 +123,14 @@ describe("single-app 完整流程", () => {
     const updated = JSON.parse(readFileSync(configPath, "utf-8"));
     expect(updated.exportIndex.hooks).toBeDefined();
     expect(updated.exportIndex.hooks.length).toBeGreaterThan(0);
+
+    // 再次 barrel，验证扁平目录 hooks 的导入路径正确
+    await runCmd(root, "../commands/barrel.js", "barrelCommand");
+    const hooksIndex = join(root, "src/hooks/index.ts");
+    expect(existsSync(hooksIndex)).toBe(true);
+    const hooks = readFileSync(hooksIndex, "utf-8");
+    expect(hooks).toContain('from "./use-foo"');
+    expect(hooks).not.toContain('from "./hooks"');
   });
 });
 
@@ -175,6 +183,9 @@ describe("monorepo 完整流程", () => {
     expect(c2).toContain("formatDate");
     expect(c2).toContain("parseId");
     expect(c2).toContain("ApiResult");
+    // 扁平目录：应从实际文件 helpers 导入，不从组名 utils 导入
+    expect(c2).toContain('from "./helpers"');
+    expect(c2).not.toContain('from "./utils"');
 
     const idx3 = join(root, "packages/contract/src/utils/index.ts");
     expect(existsSync(idx3)).toBe(true);

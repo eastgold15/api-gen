@@ -367,22 +367,23 @@ function processGroup(name: string, rootDir: string, dryRun: boolean): void {
     .map((e) => e.name)
     .sort();
 
-  // Step 2: 处理每个子模块 → 生成子 index + 收集导出
-  const modules: SubModuleInfo[] = [];
+  // Step 2: 处理子模块 → 生成子 index + 收集导出
+  let modules: SubModuleInfo[] = [];
 
   if (subDirs.length === 0) {
-    // 无子模块目录时，把当前目录本身当扁平模块处理
+    // 无子模块目录：把当前目录当扁平模块处理，直接返回（不生成组级 index）
     const mod = processSubModule(groupAbs, name, dryRun);
     if (mod) {
-      modules.push(mod);
+      console.log(chalk.dim(`  ─ 扁平目录，已在同级生成 index.ts`));
     }
-  } else {
-    for (const subDirName of subDirs) {
-      const subDirAbs = join(groupAbs, subDirName);
-      const mod = processSubModule(subDirAbs, subDirName, dryRun);
-      if (mod) {
-        modules.push(mod);
-      }
+    return;
+  }
+
+  for (const subDirName of subDirs) {
+    const subDirAbs = join(groupAbs, subDirName);
+    const mod = processSubModule(subDirAbs, subDirName, dryRun);
+    if (mod) {
+      modules.push(mod);
     }
   }
 
@@ -391,7 +392,7 @@ function processGroup(name: string, rootDir: string, dryRun: boolean): void {
     return;
   }
 
-  // Step 3: 生成组级 index.ts
+  // Step 3: 生成组级 index.ts（汇总所有子模块的导出）
   const groupContent = genGroupIndex(modules);
   const groupIndexPath = join(groupAbs, "index.ts");
 
