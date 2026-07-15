@@ -31,6 +31,8 @@ export function traverseAst(root: AstNode, enter: (node: AstNode) => void) {
 /** 提取字符串字面量 */
 export function getStringValue(node: AstNode): string | null {
   if (node.type === "StringLiteral") return node.value;
+  // OXc 在某些位置用 Literal 统一类型（arguments 中的字符串）
+  if (node.type === "Literal" && typeof node.value === "string") return node.value;
   if (node.type === "TemplateLiteral" && node.quasis.length === 1)
     return node.quasis[0].value.raw;
   return null;
