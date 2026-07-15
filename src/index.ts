@@ -1,6 +1,16 @@
 #!/usr/bin/env bun
+import { execSync } from "node:child_process";
 import { Command } from "commander";
 import chalk from "chalk";
+
+// Windows 终端 UTF-8 编码修正（避免中文乱码）
+if (process.platform === "win32") {
+  try {
+    execSync("cmd /c chcp 65001", { stdio: "ignore" });
+  } catch {
+    // 忽略失败
+  }
+}
 
 const program = new Command();
 
