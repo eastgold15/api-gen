@@ -7,6 +7,21 @@ import { format } from "@visulima/fmt";
 import { scanAllControllers, type ControllerSpec, type RouteSpec } from "../scanner/controller.js";
 import type { ApiGenRootConfig, AppLayout } from "../types/api-gen.json.js";
 
+// ---------------------------------------------------------------------------
+// 类型定义
+// ---------------------------------------------------------------------------
+
+/** 单个应用的扫描结果 */
+export interface AppRouteGroup {
+  appName: string;
+  backRoot: string;
+  controllersDir: string | null;
+  serviceDir: string | null;
+  controllers: ControllerSpec[];
+  routes: RouteSpec[];
+  groupedByTag: Record<string, RouteSpec[]>;
+}
+
 export interface ProjectContext {
   structureTree: string;
   apps: { appName: string; controllerDir: string | null; serviceDir: string | null }[];
@@ -27,10 +42,11 @@ export interface ProjectContext {
 export interface ApiSpec {
   scannedAt: string;
   projectName: string;
-  modules: ControllerSpec[];
-  routes: RouteSpec[];
-  groupedByTag: Record<string, RouteSpec[]>;
+  isMonorepo: boolean;
+  /** 按应用分组的扫描结果 */
+  appGroups: AppRouteGroup[];
   summary: {
+    totalApps: number;
     totalModules: number;
     totalRoutes: number;
     uniqueTags: string[];
@@ -38,24 +54,15 @@ export interface ApiSpec {
   projectContext: ProjectContext;
 }
 
-function groupRoutesByTag(routes: RouteSpec[]): Record<string, RouteSpec[]> {
-  const groups: Record<string, RouteSpec[]> = {};
-  for (const route of routes) {
-    const tagList = route.tags.length > 0 ? route.tags : ["untagged"];
-    for (const tag of tagList) {
-      if (!groups[tag]) groups[tag] = [];
-      groups[tag].push(route);
-    }
-  }
-  return groups;
-}
+// ---------------------------------------------------------------------------
+// 读取配置
+// ---------------------------------------------------------------------------
 
 function readConfig(configPath: string): ApiGenRootConfig {
   const raw = readFileSync(configPath, { encoding: "utf-8" });
   return JSON.parse(raw) as ApiGenRootConfig;
 }
 
-/** 读取多个文件的源码文本 */
 function readFileTexts(absPaths: string[]): string[] {
   return absPaths.map((p) => {
     try {
@@ -65,6 +72,10 @@ function readFileTexts(absPaths: string[]): string[] {
     }
   });
 }
+
+// ---------------------------------------------------------------------------
+// ProjectContext 构建（共享给 make-prompt / generate）
+// ---------------------------------------------------------------------------
 
 function buildProjectContext(config: ApiGenRootConfig): ProjectContext {
   const apps = config.apps.map((a: AppLayout) => ({
@@ -105,79 +116,121 @@ function buildProjectContext(config: ApiGenRootConfig): ProjectContext {
   };
 }
 
+// ---------------------------------------------------------------------------
+// 按 app 扫描
+// ---------------------------------------------------------------------------
+
+function scanApp(config: ApiGenRootConfig, app: AppLayout, cwd: string): AppRouteGroup | null {
+  if (!app.controllersDir) return null;
+
+  const controllersDir = resolve(cwd, app.controllersDir);
+  if (!existsSync(controllersDir)) return null;
+
+  const controllers = scanAllControllers(controllersDir);
+  const routes = controllers.flatMap((m) => m.routes);
+
+  const groupedByTag: Record<string, RouteSpec[]> = {};
+  for (const route of routes) {
+    const tagList = route.tags.length > 0 ? route.tags : ["untagged"];
+    for (const tag of tagList) {
+      if (!groupedByTag[tag]) groupedByTag[tag] = [];
+      groupedByTag[tag].push(route);
+    }
+  }
+
+  return {
+    appName: app.appName,
+    backRoot: app.backRoot,
+    controllersDir: app.controllersDir,
+    serviceDir: app.serviceDir,
+    controllers,
+    routes,
+    groupedByTag,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// 主入口
+// ---------------------------------------------------------------------------
+
 export async function scanCommand(): Promise<void> {
   const cwd = process.cwd();
   const configPath = resolve(cwd, ".vscode/api-gen.json");
-  const outputPath = resolve(cwd, ".vscode/api-spec.json");
 
   if (!existsSync(configPath)) {
-    console.error(chalk.red("读取 .vscode/api-gen.json 失败，目录："), chalk.dim(cwd));
-    console.error(chalk.dim("请先执行 api-gen init 初始化项目配置。"));
+    console.error(chalk.red("读取 .vscode/api-gen.json 失败，请先执行 api-gen init"));
     process.exit(1);
   }
 
   const config = readConfig(configPath);
 
-  const allModules: ControllerSpec[] = [];
+  // 逐个 app 扫描
+  const appGroups: AppRouteGroup[] = [];
   for (const app of config.apps) {
-    if (!app.controllersDir) continue;
-    const controllersDir = resolve(cwd, app.controllersDir);
-    if (!existsSync(controllersDir)) {
-      console.warn(chalk.yellow(format("  控制器目录不存在，跳过：%s", [controllersDir])));
-      continue;
-    }
-    const modules = scanAllControllers(controllersDir);
-    allModules.push(...modules);
+    const group = scanApp(config, app, cwd);
+    if (group) appGroups.push(group);
   }
 
-  const allRoutes = allModules.flatMap((m) => m.routes);
-  const groupedByTag = groupRoutesByTag(allRoutes);
+  // 汇总统计
+  const allRoutes = appGroups.flatMap((g) => g.routes);
+  const allControllers = appGroups.flatMap((g) => g.controllers);
   const uniqueTags = [...new Set(allRoutes.flatMap((r) => r.tags))].sort();
 
   const spec: ApiSpec = {
     scannedAt: new Date().toISOString(),
     projectName: config.projectName,
-    modules: allModules,
-    routes: allRoutes,
-    groupedByTag,
+    isMonorepo: config.isMonorepo,
+    appGroups,
     summary: {
-      totalModules: allModules.length,
+      totalApps: appGroups.length,
+      totalModules: allControllers.length,
       totalRoutes: allRoutes.length,
       uniqueTags,
     },
     projectContext: buildProjectContext(config),
   };
 
-  // 使用 tabular 表格展示路由
-  const table = createTable();
-  table.setHeaders(["控制器", "前缀", "方法", "路径", "标签"]);
-  for (const mod of allModules) {
-    for (const route of mod.routes) {
-      table.addRow([
-        mod.name || "(未命名)",
-        mod.prefix || "-",
-        chalk.green(route.method),
-        route.path,
-        route.tags.join(", ") || "-",
-      ]);
+  // 按 app 分组打印路由表格
+  for (const group of appGroups) {
+    console.log(chalk.bold(`\n  ── ${group.appName} ──`));
+    if (group.controllers.length === 0) {
+      console.log(chalk.dim("    无控制器"));
+      continue;
     }
+
+    const table = createTable();
+    table.setHeaders(["控制器", "前缀", "方法", "路径", "标签"]);
+    for (const ctrl of group.controllers) {
+      for (const route of ctrl.routes) {
+        table.addRow([
+          ctrl.name || "(未命名)",
+          ctrl.prefix || "-",
+          chalk.green(route.method),
+          route.path,
+          route.tags.join(", ") || "-",
+        ]);
+      }
+    }
+    console.log(table.toString());
   }
 
-  console.log(table.toString());
+  // 统计汇总
+  const tagText = uniqueTags.length > 0 ? uniqueTags.join(", ") : "无";
+  console.log(chalk.cyan(
+    format("共扫描 %s 个应用，%s 个控制器，%s 条接口路由", [
+      String(spec.summary.totalApps),
+      String(spec.summary.totalModules),
+      String(spec.summary.totalRoutes),
+    ]),
+  ));
+  console.log(chalk.dim(format("接口标签：%s", [tagText])));
 
-  // fmt 格式化统计信息
-  console.log(chalk.cyan(format("共扫描到 %s 个控制器，合计 %s 条接口路由", [String(spec.summary.totalModules), String(spec.summary.totalRoutes)])));
-  if (uniqueTags.length > 0) {
-    console.log(chalk.dim(format("接口标签：%s", [uniqueTags.join(", ")])));
-  }
-
-  // 写入本地 JSON 文件
-  const json = JSON.stringify(spec, null, 2);
-  writeFileSync(outputPath, json);
+  // 写入文件
+  const outputPath = resolve(cwd, ".vscode/api-spec.json");
+  writeFileSync(outputPath, JSON.stringify(spec, null, 2));
   console.log(chalk.green(format("接口规格文件已保存至 %s", [chalk.underline(outputPath)])));
-  console.log(json);
 }
 
-export default async function scan(_path?: string): Promise<void> {
+export default async function scan(): Promise<void> {
   await scanCommand();
 }

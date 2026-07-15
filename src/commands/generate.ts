@@ -14,6 +14,7 @@ import {
   type ControllerSpec as AIControllerSpec,
 } from "../generator/ai.js";
 import type { ApiGenRootConfig } from "../types/api-gen.json.js";
+import type { ApiSpec, AppRouteGroup } from "./scan.js";
 
 // ---------------------------------------------------------------------------
 // 本地配置/规格文件类型定义
@@ -34,9 +35,7 @@ interface ControllerSpec {
   routes: RouteSpec[];
 }
 
-interface ApiSpecFile {
-  modules: ControllerSpec[];
-}
+// 兼容旧版 api-spec.json — 统一按 ApiSpec.appGroups 读取
 
 /** AI 返回 JSON 的结构定义 */
 interface AIAdditions {
@@ -259,14 +258,15 @@ export async function generateCommand(): Promise<void> {
 
   // 1. 读取配置与扫描结果
   const config = readJson<ApiGenRootConfig>(".vscode/api-gen.json");
-  const apiSpecFile = readJson<ApiSpecFile>(".vscode/api-spec.json");
+  const apiSpec = readJson<ApiSpec>(".vscode/api-spec.json");
 
   // 2. 转换结构并构建系统提示词
   const genLayout = toGeneratorLayout(config);
   const systemPrompt = buildSystemPrompt(genLayout);
 
-  // 3. 接口模块分组分析
-  const moduleGroups = groupRoutesByTags(apiSpecFile.modules);
+  // 3. 从所有 app 分组收集控制器
+  const allModules = apiSpec.appGroups.flatMap((g: AppRouteGroup) => g.controllers);
+  const moduleGroups = groupRoutesByTags(allModules);
 
   if (moduleGroups.length === 0) {
     console.log(chalk.yellow("  接口规格文件内无有效路由分组，无需生成任何代码。"));
@@ -278,7 +278,7 @@ export async function generateCommand(): Promise<void> {
 
   console.log(
     chalk.dim(
-      `  共划分 ${moduleGroups.length} 个业务模块，源自 ${apiSpecFile.modules.length} 个控制器`,
+      `  共划分 ${moduleGroups.length} 个业务模块，源自 ${allModules.length} 个控制器`,
     ),
   );
   console.log(chalk.dim(`  识别到 ${commonColumns.length} 个项目通用数据表字段\n`));

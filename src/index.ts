@@ -31,17 +31,8 @@ cli.addCommand({
 cli.addCommand({
   name: "scan",
   description: "扫描现有项目，自动解析 API 结构",
-  options: [
-    {
-      name: "path",
-      alias: "p",
-      description: "待扫描目录",
-      type: String,
-      defaultValue: ".",
-    },
-  ],
-  execute: async ({ options }: Toolbox) => {
-    await scan(options.path as string);
+  execute: async () => {
+    await scan();
     console.log(chalk.green("项目扫描完成。"));
   },
 });

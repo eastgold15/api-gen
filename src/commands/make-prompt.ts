@@ -47,7 +47,7 @@ export async function makePromptCommand(tag?: string, singlePath?: string) {
   const spec = readApiSpec(specPath);
   const ctx = spec.projectContext;
 
-  let targetRoutes = spec.routes;
+  let targetRoutes = spec.appGroups.flatMap((g) => g.routes);
   if (tag) targetRoutes = targetRoutes.filter((r) => r.tags.includes(tag));
   if (singlePath) targetRoutes = targetRoutes.filter((r) => r.path === singlePath);
   if (targetRoutes.length === 0) {
