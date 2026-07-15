@@ -10,8 +10,13 @@
     "dev": "packem watch",
     "type-check": "tsc --noEmit"
   },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "exports": {
+    ".": "./dist/index.js"
+  },
   "dependencies": {
-    "@anthropic-ai/claude-agent-sdk": "^0.3.209",
     "@visulima/boxen": "^3.0.0",
     "@visulima/cerebro": "^1.0.0",
     "@visulima/colorize": "^1.0.0",
