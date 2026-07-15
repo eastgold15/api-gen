@@ -11,6 +11,7 @@ export default defineConfig({
 
   clean: true,
   runtime: "node",
+  validation: false,
   failOnWarn: false,
   transformer,
 });
