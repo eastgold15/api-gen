@@ -1,6 +1,6 @@
 import { existsSync, readdirSync } from "node:fs";
 import { readFileSync, writeFileSync } from "@visulima/fs";
-import { resolve, join, dirname, basename, relative } from "@visulima/path";
+import { resolve, join, basename, relative } from "@visulima/path";
 import chalk from "@visulima/colorize";
 import { pail } from "@visulima/pail";
 import { parseTsFile, traverseAst } from "../utils/ast-scanner.js";
@@ -173,7 +173,6 @@ function shouldWrite(filePath: string, newContent: string): boolean {
 // ---------------------------------------------------------------------------
 
 function genSubModuleIndex(
-  dirPath: string,
   files: { name: string; exports: NamedExport[] }[],
 ): string {
   const lines: string[] = [];
@@ -188,34 +187,13 @@ function genSubModuleIndex(
     const types = f.exports.filter((e) => e.kind === "type").map((e) => e.name);
 
     if (values.length > 0) {
-      lines.push(`import { ${values.join(", ")} } from "./${f.name}";`);
+      lines.push(`export { ${values.join(", ")} } from "./${f.name}";`);
     }
     if (types.length > 0) {
-      lines.push(`import type { ${types.join(", ")} } from "./${f.name}";`);
+      lines.push(`export type { ${types.join(", ")} } from "./${f.name}";`);
     }
   }
 
-  // Collect all value/type names for export statements
-  const allValues = sorted
-    .flatMap((f) => f.exports.filter((e) => e.kind === "value"))
-    .map((e) => e.name);
-  const allTypes = sorted
-    .flatMap((f) => f.exports.filter((e) => e.kind === "type"))
-    .map((e) => e.name);
-
-  // Deduplicate while preserving order
-  const seenV = new Set<string>();
-  const dedupedValues = allValues.filter((n) => seenV.has(n) ? false : seenV.add(n));
-  const seenT = new Set<string>();
-  const dedupedTypes = allTypes.filter((n) => seenT.has(n) ? false : seenT.add(n));
-
-  lines.push("");
-  if (dedupedValues.length > 0) {
-    lines.push(`export { ${dedupedValues.join(", ")} };`);
-  }
-  if (dedupedTypes.length > 0) {
-    lines.push(`export type { ${dedupedTypes.join(", ")} };`);
-  }
   lines.push("");
 
   return lines.join("\n");
@@ -230,28 +208,13 @@ function genGroupIndex(modules: SubModuleInfo[]): string {
 
   for (const m of sorted) {
     if (m.valueExports.length > 0) {
-      lines.push(`import { ${m.valueExports.join(", ")} } from "./${m.dirName}";`);
+      lines.push(`export { ${m.valueExports.join(", ")} } from "./${m.dirName}";`);
     }
     if (m.typeExports.length > 0) {
-      lines.push(`import type { ${m.typeExports.join(", ")} } from "./${m.dirName}";`);
+      lines.push(`export type { ${m.typeExports.join(", ")} } from "./${m.dirName}";`);
     }
   }
 
-  const allValues = sorted.flatMap((m) => m.valueExports);
-  const allTypes = sorted.flatMap((m) => m.typeExports);
-
-  const seenV = new Set<string>();
-  const dedupedValues = allValues.filter((n) => seenV.has(n) ? false : seenV.add(n));
-  const seenT = new Set<string>();
-  const dedupedTypes = allTypes.filter((n) => seenT.has(n) ? false : seenT.add(n));
-
-  lines.push("");
-  if (dedupedValues.length > 0) {
-    lines.push(`export { ${dedupedValues.join(", ")} };`);
-  }
-  if (dedupedTypes.length > 0) {
-    lines.push(`export type { ${dedupedTypes.join(", ")} };`);
-  }
   lines.push("");
 
   return lines.join("\n");
@@ -299,7 +262,7 @@ function processSubModule(
 
   if (fileExports.length === 0) return null;
 
-  const content = genSubModuleIndex(subDirAbs, fileExports);
+  const content = genSubModuleIndex(fileExports);
   const indexPath = join(subDirAbs, "index.ts");
 
   // Safety check: existing index without marker → skip
