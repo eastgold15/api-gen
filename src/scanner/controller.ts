@@ -19,6 +19,20 @@ export interface ControllerSpec {
 
 const HTTP_METHODS = new Set(["get", "post", "put", "patch", "delete"]);
 
+/** 钻过链式调用，找到底层的 new Elysia(...) 节点 */
+function findNewElysia(node: any): any | null {
+  if (!node) return null;
+  if (
+    node.type === "NewExpression" &&
+    node.callee?.type === "Identifier" &&
+    node.callee.name === "Elysia"
+  ) return node;
+  if (node.type === "CallExpression" && node.callee?.type === "MemberExpression") {
+    return findNewElysia(node.callee.object);
+  }
+  return null;
+}
+
 export function scanController(filePath: string): ControllerSpec {
   const absPath = resolve(filePath);
   const { program } = parseTsFile(absPath);
@@ -28,22 +42,18 @@ export function scanController(filePath: string): ControllerSpec {
   const routes: RouteSpec[] = [];
 
   traverseAst(program, (node) => {
-    // 匹配 new Elysia({ prefix: "" })
+    // 匹配 new Elysia({ prefix: "" }) 及链式调用
     if (node.type === "VariableDeclaration" && !node.declare) {
       for (const decl of node.declarations) {
-        const init = decl.init;
-        if (!init || init.type !== "NewExpression") continue;
-        const callee = init.callee;
-        if (callee.type === "Identifier" && callee.name === "Elysia") {
-          const id = decl.id;
-          if (id.type === "Identifier") controllerName = id.name;
-          const args = init.arguments;
-          if (args[0]?.type === "ObjectExpression") {
-            const prefixNode = getObjectProperty(args[0], "prefix");
-            if (prefixNode) {
-              const val = getStringValue(prefixNode);
-              if (val) prefix = val;
-            }
+        const elysiaNode = findNewElysia(decl.init);
+        if (!elysiaNode) continue;
+        if (decl.id?.type === "Identifier") controllerName = decl.id.name;
+        const args = elysiaNode.arguments;
+        if (args[0]?.type === "ObjectExpression") {
+          const prefixNode = getObjectProperty(args[0], "prefix");
+          if (prefixNode) {
+            const val = getStringValue(prefixNode);
+            if (val) prefix = val;
           }
         }
       }
