@@ -3,6 +3,8 @@ import { existsSync, readdirSync } from "node:fs";
 import { readFileSync, writeFileSync, ensureDirSync } from "@visulima/fs";
 import { resolve, dirname, join } from "@visulima/path";
 import chalk from "@visulima/colorize";
+import { VisulimaError, renderError } from "@visulima/error";
+import { indent } from "@visulima/string";
 import {
   callAI,
   buildSystemPrompt,
@@ -225,18 +227,16 @@ function writeContractFile(filePath: string, content: string): void {
   writeFileSync(absPath, `${content.trim()}\n`);
 }
 
-function validateEnvironment(): string | null {
+function validateEnvironment(): void {
   const genPath = resolve(CWD, ".vscode/api-gen.json");
   const specPath = resolve(CWD, ".vscode/api-spec.json");
 
   if (!existsSync(genPath)) {
-    return `缺少配置文件 .vscode/api-gen.json，请先执行 api-gen init`;
+    throw new VisulimaError({ name: "VALIDATION_ERROR", message: "缺少配置文件 .vscode/api-gen.json，请先执行 api-gen init" });
   }
   if (!existsSync(specPath)) {
-    return `缺少接口扫描文件 .vscode/api-spec.json，请先执行 api-gen scan`;
+    throw new VisulimaError({ name: "VALIDATION_ERROR", message: "缺少接口扫描文件 .vscode/api-spec.json，请先执行 api-gen scan" });
   }
-
-  return null;
 }
 
 // ---------------------------------------------------------------------------
@@ -246,9 +246,14 @@ function validateEnvironment(): string | null {
 export async function generateCommand(): Promise<void> {
   console.log(chalk.blue("正在执行 api-gen 代码生成...\n"));
 
-  const validationError = validateEnvironment();
-  if (validationError) {
-    console.error(chalk.red(validationError));
+  try {
+    validateEnvironment();
+  } catch (err) {
+    if (err instanceof VisulimaError) {
+      console.error(chalk.red(renderError(err)));
+    } else {
+      console.error(chalk.red(String(err)));
+    }
     process.exit(1);
   }
 

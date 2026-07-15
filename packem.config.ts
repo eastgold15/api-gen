@@ -8,11 +8,9 @@ export default defineConfig({
       executable: true,
     },
   ],
-  outDir: "./dist",
+
   clean: true,
-  declaration: false,
-  sourcemap: false,
   runtime: "node",
-  transformer,
   failOnWarn: false,
+  transformer,
 });

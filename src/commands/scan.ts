@@ -2,6 +2,8 @@ import { resolve } from "@visulima/path";
 import { readFileSync, writeFileSync } from "@visulima/fs";
 import { existsSync, readdirSync } from "node:fs";
 import chalk from "@visulima/colorize";
+import { createTable } from "@visulima/tabular";
+import { format } from "@visulima/fmt";
 import { scanAllControllers, type ControllerSpec, type RouteSpec } from "../scanner/controller.js";
 import type { ApiGenRootConfig, AppLayout } from "../types/api-gen.json.js";
 
@@ -65,14 +67,12 @@ function readFileTexts(absPaths: string[]): string[] {
 }
 
 function buildProjectContext(config: ApiGenRootConfig): ProjectContext {
-  // apps
   const apps = config.apps.map((a: AppLayout) => ({
     appName: a.appName,
     controllerDir: a.controllersDir,
     serverDir: a.serverDir,
   }));
 
-  // db & contract — 从 common 层读取
   let schemaFileList: string[] = [];
   let relationFileList: string[] = [];
   let contractFileList: string[] = [];
@@ -111,23 +111,19 @@ export async function scanCommand(): Promise<void> {
   const outputPath = resolve(cwd, ".vscode/api-spec.json");
 
   if (!existsSync(configPath)) {
-    console.error(
-      chalk.red("读取 .vscode/api-gen.json 失败，目录："),
-      chalk.dim(cwd),
-    );
+    console.error(chalk.red("读取 .vscode/api-gen.json 失败，目录："), chalk.dim(cwd));
     console.error(chalk.dim("请先执行 api-gen init 初始化项目配置。"));
     process.exit(1);
   }
 
   const config = readConfig(configPath);
 
-  // 遍历所有 app 的 controllersDir
   const allModules: ControllerSpec[] = [];
   for (const app of config.apps) {
     if (!app.controllersDir) continue;
     const controllersDir = resolve(cwd, app.controllersDir);
     if (!existsSync(controllersDir)) {
-      console.warn(chalk.yellow(`  控制器目录不存在，跳过：${controllersDir}`));
+      console.warn(chalk.yellow(format("  控制器目录不存在，跳过：%s", [controllersDir])));
       continue;
     }
     const modules = scanAllControllers(controllersDir);
@@ -152,20 +148,33 @@ export async function scanCommand(): Promise<void> {
     projectContext: buildProjectContext(config),
   };
 
-  // 控制台打印统计摘要
-  console.log(chalk.cyan(`共扫描到 ${chalk.bold(String(spec.summary.totalModules))} 个控制器，合计 ${chalk.bold(String(spec.summary.totalRoutes))} 条接口路由`));
-  if (uniqueTags.length > 0) {
-    console.log(chalk.dim(`接口标签：${uniqueTags.join(", ")}`));
-  }
+  // 使用 tabular 表格展示路由
+  const table = createTable();
+  table.setHeaders(["控制器", "前缀", "方法", "路径", "标签"]);
   for (const mod of allModules) {
-    const prefix = mod.prefix ? ` ${chalk.dim(`[路由前缀:${mod.prefix}]`)}` : "";
-    console.log(`  ${chalk.yellow(mod.name || "(未命名控制器)")}${prefix} — ${mod.routes.length} 条路由`);
+    for (const route of mod.routes) {
+      table.addRow([
+        mod.name || "(未命名)",
+        mod.prefix || "-",
+        chalk.green(route.method),
+        route.path,
+        route.tags.join(", ") || "-",
+      ]);
+    }
+  }
+
+  console.log(table.toString());
+
+  // fmt 格式化统计信息
+  console.log(chalk.cyan(format("共扫描到 %s 个控制器，合计 %s 条接口路由", [String(spec.summary.totalModules), String(spec.summary.totalRoutes)])));
+  if (uniqueTags.length > 0) {
+    console.log(chalk.dim(format("接口标签：%s", [uniqueTags.join(", ")])));
   }
 
   // 写入本地 JSON 文件
   const json = JSON.stringify(spec, null, 2);
   writeFileSync(outputPath, json);
-  console.log(chalk.green(`接口规格文件已保存至 ${chalk.underline(outputPath)}`));
+  console.log(chalk.green(format("接口规格文件已保存至 %s", [chalk.underline(outputPath)])));
   console.log(json);
 }
 

@@ -1,14 +1,13 @@
-import { resolve, dirname, join } from "@visulima/path";
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
-import { ensureDirSync } from "@visulima/fs";
-import { createInterface } from "node:readline/promises";
-import { stdin as processStdin, stdout as processStdout } from "node:process";
-import chalk from "@visulima/colorize";
 import { boxen } from "@visulima/boxen";
+import chalk from "@visulima/colorize";
+import { ensureDirSync } from "@visulima/fs";
+import { pail } from "@visulima/pail";
+import { dirname, join, resolve } from "@visulima/path";
+import inquirer from "inquirer";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { detectLayout } from "../structure/detector.js";
-import type { ApiGenRootConfig, AppLayout, CommonLayout } from "../types/api-gen.json.js";
+import type { ApiGenRootConfig } from "../types/api-gen.json.js";
 import { initDefaultPromptTemplate } from "../utils/prompt-render.js";
-
 // ---------------------------------------------------------------------------
 // 格式化打印工具函数
 // ---------------------------------------------------------------------------
@@ -28,13 +27,13 @@ function fmtList(items: string[], maxInline = 8): string {
 }
 
 function printLayout(config: ApiGenRootConfig): void {
-  console.log(chalk.bold(`\n  ${config.projectName}`));
-  console.log(chalk.dim(`  类型: ${config.isMonorepo ? "Monorepo" : "单仓库"}`));
-  console.log(chalk.dim("  ".padEnd(50, "─")));
+  pail.info(`\n  ${chalk.bold(config.projectName)}`);
+  pail.info(chalk.dim(`  类型: ${config.isMonorepo ? "Monorepo" : "单仓库"}`));
+  pail.info(chalk.dim("  ".padEnd(50, "─")));
 
   // common 公共层
   if (config.common) {
-    console.log(chalk.bold("\n  📦 公共合约层 (common)"));
+    pail.info(chalk.bold("\n  📦 公共合约层 (common)"));
     const c = config.common;
     const rows: [string, string][] = [
       ["rootDir", fmtVal(c.rootDir)],
@@ -47,32 +46,33 @@ function printLayout(config: ApiGenRootConfig): void {
     ];
     const labelWidth = Math.max(...rows.map((r) => r[0].length)) + 2;
     for (const [label, value] of rows) {
-      console.log(`    ${chalk.yellow(label.padEnd(labelWidth))} ${value}`);
+      pail.info(`    ${chalk.yellow(label.padEnd(labelWidth))} ${value}`);
     }
   }
 
   // apps 应用列表
-  console.log(chalk.bold(`\n  🚀 应用列表 (${config.apps.length})`));
+  pail.info(chalk.bold(`\n  🚀 应用列表 (${config.apps.length})`));
   for (const app of config.apps) {
-    console.log(`    ${chalk.cyan(app.appName)}`);
-    console.log(`      appRoot:        ${fmtVal(app.appRoot)}`);
-    console.log(`      controllersDir: ${fmtVal(app.controllersDir)}`);
-    console.log(`      serverDir:      ${fmtVal(app.serverDir)}`);
+    pail.info(`    ${chalk.cyan(app.appName)}`);
+    pail.info(`      appRoot:        ${fmtVal(app.appRoot)}`);
+    pail.info(`      controllersDir: ${fmtVal(app.controllersDir)}`);
+    pail.info(`      serverDir:      ${fmtVal(app.serverDir)}`);
   }
 
   // AI 配置摘要
-  console.log(chalk.bold("\n  🤖 AI 配置"));
-  console.log(`    provider:  ${chalk.cyan(config.ai.provider)}`);
-  console.log(`    model:     ${chalk.cyan(config.ai.model)}`);
-  console.log(`    baseUrl:   ${fmtVal(config.ai.baseUrl ?? null)}`);
+  pail.info(chalk.bold("\n  🤖 AI 配置"));
+  pail.info(`    provider:  ${chalk.cyan(config.ai.provider)}`);
+  pail.info(`    model:     ${chalk.cyan(config.ai.model)}`);
+  pail.info(`    baseUrl:   ${fmtVal(config.ai.baseUrl ?? null)}`);
 
   // structureTree
   if (config.structureTree) {
-    console.log(chalk.bold("\n  🌳 项目结构树"));
-    console.log(chalk.dim(config.structureTree.split("\n").map(l => `    ${l}`).join("\n")));
+    pail.info(chalk.bold("\n  🌳 项目结构树"));
+    const treeLines = config.structureTree.split("\n").map(l => `    ${l}`).join("\n");
+    pail.info(chalk.dim(treeLines));
   }
 
-  console.log();
+  pail.info("");
 }
 
 function pathRelativeName(absPath: string): string {
@@ -81,20 +81,40 @@ function pathRelativeName(absPath: string): string {
   return parts.slice(-2).join("/");
 }
 
-async function askConfirm(message: string): Promise<boolean> {
-  processStdout.write(`\n${chalk.cyan("?")} ${message} ${chalk.dim("(确认Y / 取消n)")} `);
-  const rl = createInterface({
-    input: processStdin,
-    output: processStdout,
-  });
-  try {
-    const answer = await rl.question("");
-    const trimmed = answer.trim().toLowerCase();
-    return trimmed === "" || trimmed === "y" || trimmed === "yes";
-  } finally {
-    rl.close();
-  }
+
+
+
+export async function askConfirm(message: string): Promise<boolean> {
+  const im = pail.getInteractiveManager();
+  if (im) im.suspend("stdout");
+
+  const { ok } = await inquirer.prompt([
+    {
+      type: "confirm",
+      name: "ok",
+      message,
+      default: true,
+    },
+  ]);
+
+  if (im) im.resume("stdout");
+  return ok;
 }
+// async function askConfirm(message: string): Promise<boolean> {
+//   // 交互输入这里保留原生 readline，pail 也有交互API可替换，不改也完全没问题
+//   processStdout.write(`\n${chalk.cyan("?")} ${message} ${chalk.dim("(确认Y / 取消n)")} `);
+//   const rl = createInterface({
+//     input: processStdin,
+//     output: processStdout,
+//   });
+//   try {
+//     const answer = await rl.question("");
+//     const trimmed = answer.trim().toLowerCase();
+//     return trimmed === "" || trimmed === "y" || trimmed === "yes";
+//   } finally {
+//     rl.close();
+//   }
+// }
 
 // ---------------------------------------------------------------------------
 // init 主命令逻辑
@@ -103,7 +123,7 @@ async function askConfirm(message: string): Promise<boolean> {
 export async function initCommand(directory?: string): Promise<void> {
   const cwd = directory ? resolve(directory) : process.cwd();
 
-  console.log(chalk.dim(`\n  正在扫描目录：${cwd} …\n`));
+  pail.verbose(`\n  正在扫描目录：${cwd} …`);
 
   const config = detectLayout(cwd);
 
@@ -112,7 +132,7 @@ export async function initCommand(directory?: string): Promise<void> {
   const confirmed = await askConfirm("是否将检测到的项目结构保存到 .vscode/api-gen.json？");
 
   if (!confirmed) {
-    console.log(chalk.yellow("\n  操作已取消。\n"));
+    pail.warn("\n  操作已取消。");
     return;
   }
 
@@ -141,17 +161,17 @@ export async function initCommand(directory?: string): Promise<void> {
   ensureDirSync(dirname(configPath));
   writeFileSync(configPath, JSON.stringify(merged, null, 2), "utf-8");
 
-  console.log(chalk.green(`\n  项目配置已保存至 ${configPath}\n`));
+  pail.success(`\n  项目配置已保存至 ${configPath}`);
 
   // 初始化 AI 提示词模板
   const vscodeDir = dirname(configPath);
   const tplPath = join(vscodeDir, "ai-prompt.template.md");
   initDefaultPromptTemplate(tplPath);
   if (existsSync(tplPath)) {
-    console.log(chalk.dim(`  已初始化 AI 提示词模板：${tplPath}`));
+    pail.verbose(`  已初始化 AI 提示词模板：${tplPath}`);
   }
 
-  // 打印摘要
+  // 组装摘要文本
   const summary: string[] = [];
   if (config.common) {
     summary.push(`公共合约层包含 ${config.common.existingSchemas.length} 张表、${config.common.existingContractModules.length} 个合约`);
@@ -164,12 +184,13 @@ export async function initCommand(directory?: string): Promise<void> {
   }
   summary.push(`AI 驱动：${config.ai.provider} / ${config.ai.model}`);
 
-  console.log(boxen(summary.map((s) => `· ${s}`).join("\n"), {
+  const boxText = boxen(summary.map((s) => `· ${s}`).join("\n"), {
     headerText: "检测到项目模块",
     padding: { left: 1, right: 1, top: 0, bottom: 0 },
     borderStyle: "round",
-  }));
-  console.log();
+  });
+  pail.info(boxText);
+  pail.info("");
 }
 
 export default initCommand;
