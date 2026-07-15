@@ -72,18 +72,18 @@ function scanSingleApp(appRootAbs: string): AppLayout {
   const appName = basename(appRootAbs);
   const srcRoot = resolve(appRootAbs, "src");
   const ctrlFiles = getLayerFilePaths(srcRoot, "controller");
-  const serverFiles = getLayerFilePaths(srcRoot, "server");
+  const serviceFiles = getLayerFilePaths(srcRoot, "server");
 
   let controllersDir: string | null = null;
   if (ctrlFiles.length > 0) controllersDir = dirname(ctrlFiles[0]);
-  let serverDir: string | null = null;
-  if (serverFiles.length > 0) serverDir = dirname(serverFiles[0]);
+  let serviceDir: string | null = null;
+  if (serviceFiles.length > 0) serviceDir = dirname(serviceFiles[0]);
 
   return {
     appName,
     appRoot: srcRoot,
     controllersDir,
-    serverDir,
+    serviceDir,
   };
 }
 
@@ -91,18 +91,18 @@ function scanSingleApp(appRootAbs: string): AppLayout {
 function scanSingleAppMode(rootDir: string): AppLayout {
   const srcRoot = resolve(rootDir, "src");
   const ctrlFiles = getLayerFilePaths(srcRoot, "controller");
-  const serverFiles = getLayerFilePaths(srcRoot, "server");
+  const serviceFiles = getLayerFilePaths(srcRoot, "server");
 
   let controllersDir: string | null = null;
   if (ctrlFiles.length > 0) controllersDir = dirname(ctrlFiles[0]);
-  let serverDir: string | null = null;
-  if (serverFiles.length > 0) serverDir = dirname(serverFiles[0]);
+  let serviceDir: string | null = null;
+  if (serviceFiles.length > 0) serviceDir = dirname(serviceFiles[0]);
 
   return {
     appName: "main",
     appRoot: srcRoot,
     controllersDir,
-    serverDir,
+    serviceDir,
   };
 }
 
@@ -135,7 +135,7 @@ export function detectLayout(rootDir: string): ApiGenRootConfig {
       for (const entry of entries) {
         if (entry.isDirectory() && !SKIP_DIRS.has(entry.name)) {
           const appInfo = scanSingleApp(resolve(appsDir, entry.name));
-          if (appInfo.controllersDir || appInfo.serverDir) apps.push(appInfo);
+          if (appInfo.controllersDir || appInfo.serviceDir) apps.push(appInfo);
         }
       }
     }

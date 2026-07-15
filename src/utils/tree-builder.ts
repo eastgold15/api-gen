@@ -3,7 +3,7 @@ import { resolve, join, basename } from "@visulima/path";
 
 // 业务分层后缀
 export type Layer = "controller" | "server" | "schema" | "relation" | "contract";
-export const LAYERS: Layer[] = ["controller", "server", "schema", "relation", "contract"];
+export const LAYERS: Layer[] = ["controller", "service", "schema", "relation", "contract"];
 export const SKIP_DIRS = new Set(["node_modules", "dist", ".vscode", ".git", "scripts", ".next", ".agengt", ".claude", ".lingma", "turbo"]);
 
 type DirInfo = {

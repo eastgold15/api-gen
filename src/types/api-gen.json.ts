@@ -22,7 +22,7 @@ export interface AppLayout {
   appName: string;
   appRoot: string;
   controllersDir: string | null;
-  serverDir: string | null;
+  serviceDir: string | null;
 }
 
 /** 全局根配置唯一标准 */

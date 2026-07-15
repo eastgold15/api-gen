@@ -55,7 +55,7 @@ export function initDefaultPromptTemplate(tplPath: string) {
 ### 分层职责强制约定
 
 1. *.controller.ts：仅声明 Elysia 接口路由，无业务逻辑；入参、出参全部从 contract 导入，禁止内联 TypeBox 实体。
-2. *.server.ts：纯业务层，处理数据库 CRUD、事务、权限鉴权；函数入参、返回值统一使用契约类型。
+2. *.service.ts：纯业务层，处理数据库 CRUD、事务、权限鉴权；函数入参、返回值统一使用契约类型。
 3. *.contract.ts：存放全部 TypeBox DTO，包含请求、响应、分页、多表交叉组合实体；所有复用类型统一收敛在此，禁止分散定义。
 4. *.schema.ts：Drizzle 数据表定义，业务代码不重复建表。
 5. *.relation.ts：数据表外键、一对多、多对多关联。

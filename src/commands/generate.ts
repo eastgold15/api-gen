@@ -92,8 +92,8 @@ function toGeneratorLayout(config: ApiGenRootConfig): GeneratorLayout {
 
   // 也在每个 app 的 server 目录下查找 schema/contract
   for (const app of config.apps) {
-    if (app.serverDir) {
-      const serverAbs = resolve(CWD, app.serverDir);
+    if (app.serviceDir) {
+      const serverAbs = resolve(CWD, app.serviceDir);
       try {
         const entries = readdirSync(serverAbs, { withFileTypes: true });
         for (const entry of entries) {

@@ -214,7 +214,7 @@ export function buildSystemPrompt(layout: ProjectLayout): string {
     lines.push(layout.structureTree);
     lines.push("```");
     lines.push("");
-    lines.push("以上是项目的完整目录结构树，注意各层文件的分层后缀（.schema.ts / .contract.ts / .controller.ts / .server.ts / .relation.ts），生成新文件时严格遵循此结构。");
+    lines.push("以上是项目的完整目录结构树，注意各层文件的分层后缀（.schema.ts / .contract.ts / .controller.ts / .service.ts / .relation.ts），生成新文件时严格遵循此结构。");
     lines.push("");
   }
 

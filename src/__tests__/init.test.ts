@@ -45,7 +45,7 @@ export const user = new Elysia({ prefix: "/users" })
   it("识别 controller / server 目录", () => {
     const config = detectLayout(TMP_ROOT);
     expect(config.apps[0]!.controllersDir).toContain("src");
-    expect(config.apps[0]!.serverDir).toContain("src");
+    expect(config.apps[0]!.serviceDir).toContain("src");
   });
 
   it("structureTree 包含分层文件 (controller/server)", () => {
@@ -143,7 +143,7 @@ describe("空目录", () => {
     const config = detectLayout(TMP_ROOT);
     expect(config.apps.length).toBe(1);
     expect(config.apps[0]!.controllersDir).toBeNull();
-    expect(config.apps[0]!.serverDir).toBeNull();
+    expect(config.apps[0]!.serviceDir).toBeNull();
   });
 
   it("structureTree 为 project-root", () => {

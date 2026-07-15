@@ -67,7 +67,7 @@ function printLayout(config: ApiGenRootConfig): void {
     appsTable.addRow([
       chalk.cyan(app.appName),
       fmtVal(app.controllersDir),
-      fmtVal(app.serverDir),
+      fmtVal(app.serviceDir),
     ]);
   }
   console.log(appsTable.toString());
@@ -169,7 +169,7 @@ export async function initCommand(directory?: string): Promise<void> {
   for (const app of config.apps) {
     const parts = [`应用 "${app.appName}"`];
     if (app.controllersDir) parts.push("有控制器");
-    if (app.serverDir) parts.push("有服务端");
+    if (app.serviceDir) parts.push("有服务端");
     summary.push(parts.join("，"));
   }
   summary.push(`AI 驱动：${config.ai.provider} / ${config.ai.model}`);

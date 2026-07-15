@@ -9,7 +9,7 @@ import type { ApiGenRootConfig, AppLayout } from "../types/api-gen.json.js";
 
 export interface ProjectContext {
   structureTree: string;
-  apps: { appName: string; controllerDir: string | null; serverDir: string | null }[];
+  apps: { appName: string; controllerDir: string | null; serviceDir: string | null }[];
   db: {
     tableNames: string[];
     schemaFileList: string[];
@@ -70,7 +70,7 @@ function buildProjectContext(config: ApiGenRootConfig): ProjectContext {
   const apps = config.apps.map((a: AppLayout) => ({
     appName: a.appName,
     controllerDir: a.controllersDir,
-    serverDir: a.serverDir,
+    serviceDir: a.serviceDir,
   }));
 
   let schemaFileList: string[] = [];
