@@ -12,6 +12,7 @@
   "scripts": {
     "build": "packem build && npm link",
     "dev": "packem build  --watch",
+    "test": "bun test",
     "type-check": "tsc --noEmit"
   },
   "engines": {

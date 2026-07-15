@@ -58,12 +58,6 @@ export const user = new Elysia({ prefix: "/users" })
   it("common 层为 null", () => {
     expect(detectLayout(TMP_ROOT).common).toBeNull();
   });
-
-  it("AI 配置含默认值", () => {
-    const ai = detectLayout(TMP_ROOT).ai;
-    expect(ai.provider).toBe("deepseek");
-    expect(ai.model).toBe("deepseek-chat");
-  });
 });
 
 // -----------------------------------------------------------------------

@@ -4,13 +4,6 @@ import { dirname, resolve } from "@visulima/path";
 import { existsSync, writeFileSync } from "node:fs";
 import type { ApiConfig } from "../types/api-gen.json.js";
 
-// ---------------------------------------------------------------------------
-// 常量
-// ---------------------------------------------------------------------------
-
-const CWD = process.cwd();
-const CONFIG_PATH = resolve(CWD, ".vscode/api-config.json");
-
 const DEFAULT_CONFIG: ApiConfig = {
   ai: {
     provider: "deepseek",
@@ -28,16 +21,18 @@ const DEFAULT_CONFIG: ApiConfig = {
 // ---------------------------------------------------------------------------
 
 export async function initCommand(): Promise<void> {
-  if (existsSync(CONFIG_PATH)) {
-    pail.warn(`api-config.json 已存在，跳过：${CONFIG_PATH}`);
+  const configPath = resolve(process.cwd(), ".vscode/api-config.json");
+
+  if (existsSync(configPath)) {
+    pail.warn(`api-config.json 已存在，跳过：${configPath}`);
     pail.info("如需重新生成，请先删除该文件后重试");
     return;
   }
 
-  ensureDirSync(dirname(CONFIG_PATH));
-  writeFileSync(CONFIG_PATH, JSON.stringify(DEFAULT_CONFIG, null, 2), "utf-8");
+  ensureDirSync(dirname(configPath));
+  writeFileSync(configPath, JSON.stringify(DEFAULT_CONFIG, null, 2), "utf-8");
 
-  pail.success(`CLI 脚本配置已保存至 ${CONFIG_PATH}`);
+  pail.success(`CLI 脚本配置已保存至 ${configPath}`);
   pail.info("请编辑 ai.apiKey 后使用，然后运行 `api-gen sync` 填充 barrel 导出路径");
 }
 

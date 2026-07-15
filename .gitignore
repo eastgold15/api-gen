@@ -4,3 +4,4 @@ dist/**
 bun.lock
 .vscode/ai-prompt.template.md
 .vscode/api-gen.json
+.test-tmp/

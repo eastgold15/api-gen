@@ -9,9 +9,6 @@ import type { ApiConfig, ExportIndexConfig } from "../types/api-gen.json.js";
 // 常量
 // ---------------------------------------------------------------------------
 
-const CWD = process.cwd();
-const CONFIG_PATH = resolve(CWD, ".vscode/api-config.json");
-
 const SKIP_DIRS = new Set([
   "node_modules", "dist", ".vscode", ".git", "scripts",
   ".next", ".agengt", ".claude", ".lingma", "turbo",
@@ -63,12 +60,15 @@ function scanBarrelDirs(rootDir: string): Record<string, string[]> {
 // ---------------------------------------------------------------------------
 
 export async function syncCommand(): Promise<void> {
-  if (!existsSync(CONFIG_PATH)) {
-    pail.error(`缺少 ${CONFIG_PATH}，请先执行 api-gen init`);
+  const cwd = process.cwd();
+  const configPath = resolve(cwd, ".vscode/api-config.json");
+
+  if (!existsSync(configPath)) {
+    pail.error(`缺少 ${configPath}，请先执行 api-gen init`);
     return;
   }
 
-  const raw = readFileSync(CONFIG_PATH, { encoding: "utf-8" });
+  const raw = readFileSync(configPath, { encoding: "utf-8" });
   const config = JSON.parse(raw) as ApiConfig;
 
   const current = config.exportIndex;
@@ -77,7 +77,7 @@ export async function syncCommand(): Promise<void> {
     return;
   }
 
-  const scanned = scanBarrelDirs(CWD);
+  const scanned = scanBarrelDirs(cwd);
   const updated: ExportIndexConfig = { includes: current.includes };
 
   let changed = false;
@@ -108,7 +108,7 @@ export async function syncCommand(): Promise<void> {
       updated[name] = scanned[name];
       changed = true;
       console.log(chalk.green(`  + ${name}: 新增，填充 ${scanned[name].length} 个路径`));
-    } else if (!(name in current)) {
+    } else if (!(name in updated)) {
       updated[name] = [];
     }
   }
@@ -119,10 +119,10 @@ export async function syncCommand(): Promise<void> {
   }
 
   config.exportIndex = updated;
-  ensureDirSync(dirname(CONFIG_PATH));
-  writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2), "utf-8");
+  ensureDirSync(dirname(configPath));
+  writeFileSync(configPath, JSON.stringify(config, null, 2), "utf-8");
 
-  pail.success(`exportIndex 已更新至 ${CONFIG_PATH}`);
+  pail.success(`exportIndex 已更新至 ${configPath}`);
 }
 
 export default syncCommand;
