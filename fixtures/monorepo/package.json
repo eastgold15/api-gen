@@ -1,1 +1,6 @@
-{"name": "monorepo-test"}
+{
+  "name": "monorepo-test",
+  "dependencies": {
+    "elysia": "^1.4.29"
+  }
+}
