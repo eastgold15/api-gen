@@ -1,4 +1,7 @@
 import { setTimeout as sleep } from "node:timers/promises";
+import type { AIConfig } from "../types/api-gen.json.js";
+
+export type { AIConfig };
 
 // ---------------------------------------------------------------------------
 // 类型定义
@@ -15,6 +18,8 @@ export interface ProjectLayout {
   existingContracts: string[];
   /** 从项目中提取的命名规范 */
   namingConventions: NamingConventions;
+  /** 项目目录结构树（AI 可视化项目布局） */
+  structureTree?: string;
 }
 
 export interface NamingConventions {
@@ -199,6 +204,18 @@ export function buildSystemPrompt(layout: ProjectLayout): string {
       lines.push("```");
       lines.push("");
     }
+  }
+
+  // -- 项目目录结构树 ------------------------------------------------
+  if (layout.structureTree) {
+    lines.push("## 项目目录结构");
+    lines.push("");
+    lines.push("```");
+    lines.push(layout.structureTree);
+    lines.push("```");
+    lines.push("");
+    lines.push("以上是项目的完整目录结构树，注意各层文件的分层后缀（.schema.ts / .contract.ts / .controller.ts / .server.ts / .relation.ts），生成新文件时严格遵循此结构。");
+    lines.push("");
   }
 
   // -- 已有数据表 --------------------------------------------------

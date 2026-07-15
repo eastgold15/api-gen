@@ -4,7 +4,7 @@ import { createInterface } from "node:readline/promises";
 import { stdin as processStdin, stdout as processStdout } from "node:process";
 import chalk from "chalk";
 import { detectLayout } from "../structure/detector.js";
-import type { ProjectLayout } from "../structure/detector.js";
+import type { ApiGenRootConfig, AppLayout, CommonLayout } from "../types/api-gen.json.js";
 
 // ---------------------------------------------------------------------------
 // 格式化打印工具函数
@@ -24,36 +24,58 @@ function fmtList(items: string[], maxInline = 8): string {
   return chalk.green(head.join(", ")) + tail;
 }
 
-function printLayout(layout: ProjectLayout): void {
-  const rows: [string, string][] = [
-    ["项目名称", chalk.bold(layout.projectName)],
-    ["合约公共目录", fmtVal(layout.contractDir)],
-    ["数据表定义文件", fmtVal(layout.schemaPath)],
-    ["表关联关系文件", fmtVal(layout.relationPath)],
-    ["TypeBox 合约目录", fmtVal(layout.typeboxDir)],
-    ["控制器路由目录", fmtVal(layout.controllersDir)],
-    ["服务源码根目录", fmtVal(layout.serverDir)],
-    [
-      `数据表定义(${layout.existingSchemas.length})`,
-      fmtList(layout.existingSchemas),
-    ],
-    [
-      `接口合约(${layout.existingContracts.length})`,
-      fmtList(layout.existingContracts),
-    ],
-  ];
-
-  const labelWidth = Math.max(...rows.map((r) => r[0].length)) + 2;
-
-  console.log(chalk.bold("\n  项目目录结构检测结果"));
+function printLayout(config: ApiGenRootConfig): void {
+  console.log(chalk.bold(`\n  ${config.projectName}`));
+  console.log(chalk.dim(`  类型: ${config.isMonorepo ? "Monorepo" : "单仓库"}`));
   console.log(chalk.dim("  ".padEnd(50, "─")));
-  console.log();
 
-  for (const [label, value] of rows) {
-    console.log(`  ${chalk.yellow(label.padEnd(labelWidth))} ${value}`);
+  // common 公共层
+  if (config.common) {
+    console.log(chalk.bold("\n  📦 公共合约层 (common)"));
+    const c = config.common;
+    const rows: [string, string][] = [
+      ["rootDir", fmtVal(c.rootDir)],
+      ["schemaFiles", fmtList(c.schemaFiles.map(f => pathRelativeName(f)))],
+      ["relationFiles", fmtList(c.relationFiles.map(f => pathRelativeName(f)))],
+      ["contractFiles", fmtList(c.contractFiles.map(f => pathRelativeName(f)))],
+      ["typeboxDir", fmtVal(c.typeboxDir)],
+      ["existingSchemas", fmtList(c.existingSchemas)],
+      ["existingContractModules", fmtList(c.existingContractModules)],
+    ];
+    const labelWidth = Math.max(...rows.map((r) => r[0].length)) + 2;
+    for (const [label, value] of rows) {
+      console.log(`    ${chalk.yellow(label.padEnd(labelWidth))} ${value}`);
+    }
+  }
+
+  // apps 应用列表
+  console.log(chalk.bold(`\n  🚀 应用列表 (${config.apps.length})`));
+  for (const app of config.apps) {
+    console.log(`    ${chalk.cyan(app.appName)}`);
+    console.log(`      appRoot:        ${fmtVal(app.appRoot)}`);
+    console.log(`      controllersDir: ${fmtVal(app.controllersDir)}`);
+    console.log(`      serverDir:      ${fmtVal(app.serverDir)}`);
+  }
+
+  // AI 配置摘要
+  console.log(chalk.bold("\n  🤖 AI 配置"));
+  console.log(`    provider:  ${chalk.cyan(config.ai.provider)}`);
+  console.log(`    model:     ${chalk.cyan(config.ai.model)}`);
+  console.log(`    baseUrl:   ${fmtVal(config.ai.baseUrl ?? null)}`);
+
+  // structureTree
+  if (config.structureTree) {
+    console.log(chalk.bold("\n  🌳 项目结构树"));
+    console.log(chalk.dim(config.structureTree.split("\n").map(l => `    ${l}`).join("\n")));
   }
 
   console.log();
+}
+
+function pathRelativeName(absPath: string): string {
+  // 取最后两级 path segment 做展示
+  const parts = absPath.replace(/\\/g, "/").split("/");
+  return parts.slice(-2).join("/");
 }
 
 async function askConfirm(message: string): Promise<boolean> {
@@ -81,9 +103,9 @@ export async function initCommand(directory?: string): Promise<void> {
 
   console.log(chalk.dim(`\n  正在扫描目录：${cwd} …\n`));
 
-  const layout = detectLayout(cwd);
+  const config = detectLayout(cwd);
 
-  printLayout(layout);
+  printLayout(config);
 
   const confirmed = await askConfirm("是否将检测到的项目结构保存到 .vscode/api-gen.json？");
 
@@ -100,54 +122,37 @@ export async function initCommand(directory?: string): Promise<void> {
     try {
       existing = JSON.parse(readFileSync(configPath, "utf-8")) as Record<string, unknown>;
     } catch {
-      // 原有文件解析异常则忽略，直接覆盖基础结构
+      // 原有文件解析异常则忽略
     }
   }
 
-  const config = {
+  const merged = {
     ...existing,
-    projectName: layout.projectName,
-    contractDir: layout.contractDir,
-    schemaPath: layout.schemaPath,
-    relationPath: layout.relationPath,
-    typeboxDir: layout.typeboxDir,
-    controllersDir: layout.controllersDir,
-    serverDir: layout.serverDir,
-    existingSchemas: layout.existingSchemas,
-    existingContracts: layout.existingContracts,
-    ai: existing.ai ?? {
-      provider: "deepseek",
-      model: "deepseek-chat",
-      apiKey: "请替换为你的API密钥",
-      baseUrl: "https://api.deepseek.com",
-    },
+    projectName: config.projectName,
+    isMonorepo: config.isMonorepo,
+    structureTree: config.structureTree,
+    common: config.common,
+    apps: config.apps,
+    ai: existing.ai ?? config.ai,
   };
 
   mkdirSync(dirname(configPath), { recursive: true });
-  writeFileSync(configPath, JSON.stringify(config, null, 2), "utf-8");
+  writeFileSync(configPath, JSON.stringify(merged, null, 2), "utf-8");
 
   console.log(chalk.green(`\n  项目配置已保存至 ${configPath}\n`));
 
+  // 打印摘要
   const summary: string[] = [];
-  if (layout.contractDir) {
-    summary.push(`公共合约根目录：${layout.contractDir}`);
+  if (config.common) {
+    summary.push(`公共合约层包含 ${config.common.existingSchemas.length} 张表、${config.common.existingContractModules.length} 个合约`);
   }
-  if (layout.schemaPath) {
-    summary.push(
-      `数据表文件，包含 ${layout.existingSchemas.length} 张数据表`,
-    );
+  for (const app of config.apps) {
+    const parts = [`应用 "${app.appName}"`];
+    if (app.controllersDir) parts.push("有控制器");
+    if (app.serverDir) parts.push("有服务端");
+    summary.push(parts.join("，"));
   }
-  if (layout.typeboxDir) {
-    summary.push(
-      `TypeBox 合约目录，共 ${layout.existingContracts.length} 个接口合约`,
-    );
-  }
-  if (layout.controllersDir) {
-    summary.push(`控制器路由目录：${layout.controllersDir}`);
-  }
-  if (layout.serverDir) {
-    summary.push(`服务源码根目录：${layout.serverDir}`);
-  }
+  summary.push(`AI 驱动：${config.ai.provider} / ${config.ai.model}`);
 
   console.log(chalk.dim("  本次检测到项目模块："));
   for (const item of summary) {
@@ -157,5 +162,4 @@ export async function initCommand(directory?: string): Promise<void> {
   console.log();
 }
 
-// 默认导出，适配入口动态导入
 export default initCommand;
