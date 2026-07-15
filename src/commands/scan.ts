@@ -2,7 +2,24 @@ import { resolve } from "node:path";
 import { readFileSync, writeFileSync, existsSync } from "node:fs";
 import chalk from "chalk";
 import { scanAllControllers, type ControllerSpec, type RouteSpec } from "../scanner/controller.js";
-import type { ApiGenRootConfig } from "../types/api-gen.json.js";
+import type { ApiGenRootConfig, AppLayout } from "../types/api-gen.json.js";
+
+export interface ProjectContext {
+  structureTree: string;
+  apps: { appName: string; controllerDir: string | null; serverDir: string | null }[];
+  db: {
+    tableNames: string[];
+    schemaFileList: string[];
+    schemaSourceTexts: string[];
+    relationFileList: string[];
+    relationSourceTexts: string[];
+  };
+  contract: {
+    moduleNames: string[];
+    contractFileList: string[];
+    sourceTexts: string[];
+  };
+}
 
 export interface ApiSpec {
   scannedAt: string;
@@ -15,6 +32,7 @@ export interface ApiSpec {
     totalRoutes: number;
     uniqueTags: string[];
   };
+  projectContext: ProjectContext;
 }
 
 function groupRoutesByTag(routes: RouteSpec[]): Record<string, RouteSpec[]> {
@@ -32,6 +50,58 @@ function groupRoutesByTag(routes: RouteSpec[]): Record<string, RouteSpec[]> {
 function readConfig(configPath: string): ApiGenRootConfig {
   const raw = readFileSync(configPath, "utf-8");
   return JSON.parse(raw) as ApiGenRootConfig;
+}
+
+/** 读取多个文件的源码文本 */
+function readFileTexts(absPaths: string[]): string[] {
+  return absPaths.map((p) => {
+    try {
+      return readFileSync(p, "utf-8");
+    } catch {
+      return "";
+    }
+  });
+}
+
+function buildProjectContext(config: ApiGenRootConfig): ProjectContext {
+  // apps
+  const apps = config.apps.map((a: AppLayout) => ({
+    appName: a.appName,
+    controllerDir: a.controllersDir,
+    serverDir: a.serverDir,
+  }));
+
+  // db & contract — 从 common 层读取
+  let schemaFileList: string[] = [];
+  let relationFileList: string[] = [];
+  let contractFileList: string[] = [];
+  let tableNames: string[] = [];
+  let moduleNames: string[] = [];
+
+  if (config.common) {
+    schemaFileList = config.common.schemaFiles;
+    relationFileList = config.common.relationFiles;
+    contractFileList = config.common.contractFiles;
+    tableNames = config.common.existingSchemas;
+    moduleNames = config.common.existingContractModules;
+  }
+
+  return {
+    structureTree: config.structureTree,
+    apps,
+    db: {
+      tableNames,
+      schemaFileList,
+      schemaSourceTexts: readFileTexts(schemaFileList),
+      relationFileList,
+      relationSourceTexts: readFileTexts(relationFileList),
+    },
+    contract: {
+      moduleNames,
+      contractFileList,
+      sourceTexts: readFileTexts(contractFileList),
+    },
+  };
 }
 
 export async function scanCommand(): Promise<void> {
@@ -78,6 +148,7 @@ export async function scanCommand(): Promise<void> {
       totalRoutes: allRoutes.length,
       uniqueTags,
     },
+    projectContext: buildProjectContext(config),
   };
 
   // 控制台打印统计摘要
@@ -97,7 +168,6 @@ export async function scanCommand(): Promise<void> {
   console.log(json);
 }
 
-// 默认导出，适配入口文件动态 import 加载
 export default async function scan(_path?: string): Promise<void> {
   await scanCommand();
 }

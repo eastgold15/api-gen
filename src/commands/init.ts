@@ -1,10 +1,11 @@
-import { resolve, dirname } from "node:path";
+import { resolve, dirname, join } from "node:path";
 import { writeFileSync, mkdirSync, readFileSync, existsSync } from "node:fs";
 import { createInterface } from "node:readline/promises";
 import { stdin as processStdin, stdout as processStdout } from "node:process";
 import chalk from "chalk";
 import { detectLayout } from "../structure/detector.js";
 import type { ApiGenRootConfig, AppLayout, CommonLayout } from "../types/api-gen.json.js";
+import { initDefaultPromptTemplate } from "../utils/prompt-render.js";
 
 // ---------------------------------------------------------------------------
 // 格式化打印工具函数
@@ -140,6 +141,14 @@ export async function initCommand(directory?: string): Promise<void> {
   writeFileSync(configPath, JSON.stringify(merged, null, 2), "utf-8");
 
   console.log(chalk.green(`\n  项目配置已保存至 ${configPath}\n`));
+
+  // 初始化 AI 提示词模板
+  const vscodeDir = dirname(configPath);
+  const tplPath = join(vscodeDir, "ai-prompt.template.md");
+  initDefaultPromptTemplate(tplPath);
+  if (existsSync(tplPath)) {
+    console.log(chalk.dim(`  已初始化 AI 提示词模板：${tplPath}`));
+  }
 
   // 打印摘要
   const summary: string[] = [];
