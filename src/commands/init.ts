@@ -149,6 +149,7 @@ export async function initCommand(directory?: string): Promise<void> {
     common: config.common,
     apps: config.apps,
     ai: existing.ai ?? config.ai,
+    exportIndex: existing.exportIndex ?? config.exportIndex,
   };
 
   ensureDirSync(dirname(configPath));

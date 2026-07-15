@@ -180,5 +180,11 @@ export function detectLayout(rootDir: string): ApiGenRootConfig {
       apiKey: "请替换为你的API密钥",
       baseUrl: "https://api.deepseek.com",
     },
+    // 默认 barrel 导出配置，用户可按需修改
+    exportIndex: {
+      groups: [
+        { name: "utils", rootDir: "packages/contract/src/utils" },
+      ],
+    },
   };
 }
