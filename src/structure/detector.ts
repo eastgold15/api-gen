@@ -137,6 +137,48 @@ function detectIsMonorepo(rootDir: string): boolean {
   return hasPackages || hasApps;
 }
 
+// ---------------------------------------------------------------------------
+// barrel 目录扫描
+// ---------------------------------------------------------------------------
+
+const BARREL_TARGETS = new Set([
+  "utils", "hooks", "helpers", "constants", "types",
+  "schemas", "validators", "middleware",
+]);
+
+/** 递归扫描目录，按文件夹名分组收集匹配的路径 */
+function collectTargetDirs(
+  dir: string,
+  result: Record<string, string[]>,
+  prefix: string,
+) {
+  if (!existsSync(dir)) return;
+  let entries: import("node:fs").Dirent[];
+  try { entries = readdirSync(dir, { withFileTypes: true }); } catch { return; }
+
+  for (const entry of entries) {
+    if (!entry.isDirectory()) continue;
+    if (SKIP_DIRS.has(entry.name)) continue;
+
+    const fullPath = join(dir, entry.name);
+    const relPath = prefix ? `${prefix}/${entry.name}` : entry.name;
+
+    if (BARREL_TARGETS.has(entry.name)) {
+      if (!result[entry.name]) result[entry.name] = [];
+      result[entry.name].push(relPath);
+    }
+
+    collectTargetDirs(fullPath, result, relPath);
+  }
+}
+
+/** 扫描项目，发现所有 barrel 目标目录 */
+function scanBarrelDirs(rootDir: string): Record<string, string[]> {
+  const result: Record<string, string[]> = {};
+  collectTargetDirs(rootDir, result, "");
+  return result;
+}
+
 /** 全局入口，输出完整 ApiGenRootConfig */
 export function detectLayout(rootDir: string): ApiGenRootConfig {
   // 项目名称
@@ -168,6 +210,13 @@ export function detectLayout(rootDir: string): ApiGenRootConfig {
     apps.push(scanSingleAppMode(rootDir));
   }
 
+  // 扫描 barrel 目标目录
+  const scanned = scanBarrelDirs(rootDir);
+  const exportIndex: Record<string, string[]> = { includes: ["utils"] };
+  for (const [key, paths] of Object.entries(scanned)) {
+    exportIndex[key] = paths;
+  }
+
   return {
     projectName,
     isMonorepo,
@@ -180,11 +229,6 @@ export function detectLayout(rootDir: string): ApiGenRootConfig {
       apiKey: "请替换为你的API密钥",
       baseUrl: "https://api.deepseek.com",
     },
-    // 默认 barrel 导出配置，用户可按需修改
-    exportIndex: {
-      groups: [
-        { name: "utils", rootDir: "packages/contract/src/utils" },
-      ],
-    },
+    exportIndex,
   };
 }

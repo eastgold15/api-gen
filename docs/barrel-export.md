@@ -43,45 +43,58 @@ contract/
 └── query-types.model.ts      ← 手动维护
 ```
 
-## 使用流程
+## 配置
 
-### 1. 配置
-
-在 `.vscode/api-gen.json` 中添加 `exportIndex`：
+在 `.vscode/api-gen.json` 中，`exportIndex` 是 `api-gen init` 自动生成的：
 
 ```json
 {
   "exportIndex": {
-    "groups": [
-      {
-        "name": "utils",
-        "rootDir": "packages/contract/src/utils"
-      }
+    "includes": ["utils"],
+    "constants": ["packages/contract/src/constants"],
+    "hooks": ["packages/contract/src/hooks"],
+    "utils": ["packages/contract/src/utils"]
+  }
+}
+```
+
+- **`includes`** — 要处理的组名清单，只有在这里的组才会被执行
+- **其余 key** — 组名 → 相对路径数组
+
+### 配置工作流
+
+```bash
+# 第一次 init：自动扫描发现目录，生成骨架
+api-gen init
+# → includes: ["utils"]，同时发现 constants、hooks、utils 的路径
+
+# 手动编辑 config：加入新组
+# "includes": ["utils", "hooks", "types"]
+# "hooks": [],
+# "types": []
+
+# 第二次 init：空路径自动填充已发现的位置
+api-gen init
+# → hooks 路径自动填上，已有的 utils 路径不变
+```
+
+### 多路径示例
+
+一个组可以有多个路径，tool 会逐个处理：
+
+```json
+{
+  "exportIndex": {
+    "includes": ["utils"],
+    "utils": [
+      "packages/contract/src/utils",
+      "apps/admin/src/utils"
     ]
   }
 }
 ```
 
-每个 `group` 代表一个导出组：
-- `name` — 组名，用于 `--group` 筛选
-- `rootDir` — 目录路径（相对项目根）
-
-后续增加 drizzle / typebox / constants 只需加一项：
-
-```json
-{
-  "exportIndex": {
-    "groups": [
-      { "name": "utils",     "rootDir": "packages/contract/src/utils" },
-      { "name": "drizzle",   "rootDir": "packages/contract/src/drizzle" },
-      { "name": "typebox",   "rootDir": "packages/contract/src/typebox" },
-      { "name": "constants", "rootDir": "packages/contract/src/constants" }
-    ]
-  }
-}
-```
-
-### 2. 运行
+等价于对两个目录分别执行 barrel 生成。
 
 ```bash
 # 扫描所有组，生成 barrel

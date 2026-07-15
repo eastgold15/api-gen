@@ -31,18 +31,22 @@ export interface AppLayout {
 // 桶导出（barrel）配置
 // ---------------------------------------------------------------------------
 
-/** 单个导出组，如 utils / drizzle / typebox / constants */
-export interface ExportGroup {
-  /** 组名，如 "utils" */
-  name: string;
-  /** 目录路径（相对项目根） */
-  rootDir: string;
-}
-
-/** 桶导出配置 */
-export interface ExportIndexConfig {
-  groups: ExportGroup[];
-}
+/**
+ * 桶导出（barrel）配置
+ *
+ * 示例：
+ * ```json
+ * {
+ *   "includes": ["utils", "hooks"],
+ *   "utils": ["packages/contract/src/utils"],
+ *   "hooks": []
+ * }
+ * ```
+ *
+ * - `includes`: 要处理的组名清单
+ * - 其余 key: 组名 → 路径数组（空数组表示留用待填）
+ */
+export type ExportIndexConfig = Record<string, string[]>;
 
 /** 全局根配置唯一标准 */
 export interface ApiGenRootConfig {

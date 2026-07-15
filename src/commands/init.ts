@@ -111,6 +111,36 @@ export async function askConfirm(message: string): Promise<boolean> {
 }
 
 // ---------------------------------------------------------------------------
+// barrel 配置合并
+// ---------------------------------------------------------------------------
+
+/**
+ * 合并 exportIndex 配置：
+ * - 无旧配置 → 用扫描结果
+ * - 有旧配置 → 保留旧 includes 清单，空路径用扫描结果填充
+ */
+function mergeExportIndex(
+  existing: Record<string, string[]> | undefined,
+  scanned: Record<string, string[]> | undefined,
+): Record<string, string[]> | undefined {
+  if (!scanned) return existing ?? scanned;
+  if (!existing || !existing.includes?.length) return scanned;
+
+  const merged: Record<string, string[]> = { includes: existing.includes };
+  for (const name of existing.includes) {
+    const existingPaths = existing[name];
+    if (existingPaths && existingPaths.length > 0) {
+      merged[name] = existingPaths;
+    } else if (scanned[name]?.length) {
+      merged[name] = scanned[name];
+    } else {
+      merged[name] = [];
+    }
+  }
+  return merged;
+}
+
+// ---------------------------------------------------------------------------
 // init 主命令逻辑
 // ---------------------------------------------------------------------------
 
@@ -149,7 +179,10 @@ export async function initCommand(directory?: string): Promise<void> {
     common: config.common,
     apps: config.apps,
     ai: existing.ai ?? config.ai,
-    exportIndex: existing.exportIndex ?? config.exportIndex,
+    exportIndex: mergeExportIndex(
+      existing.exportIndex as Record<string, string[]> | undefined,
+      config.exportIndex,
+    ),
   };
 
   ensureDirSync(dirname(configPath));

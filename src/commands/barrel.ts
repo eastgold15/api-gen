@@ -4,7 +4,7 @@ import { resolve, join, dirname, basename, relative } from "@visulima/path";
 import chalk from "@visulima/colorize";
 import { pail } from "@visulima/pail";
 import { parseTsFile, traverseAst } from "../utils/ast-scanner.js";
-import type { ApiGenRootConfig, ExportGroup } from "../types/api-gen.json.js";
+import type { ApiGenRootConfig } from "../types/api-gen.json.js";
 
 // ---------------------------------------------------------------------------
 // 类型
@@ -345,16 +345,16 @@ function processSubModule(
   };
 }
 
-/** 处理单个组（如 utils/）→ 先处理子模块，再生成组级 index.ts */
-function processGroup(group: ExportGroup, dryRun: boolean): void {
-  const groupAbs = resolve(CWD, group.rootDir);
+/** 处理单个组路径（如 packages/contract/src/utils/）→ 先处理子模块，再生成组级 index.ts */
+function processGroup(name: string, rootDir: string, dryRun: boolean): void {
+  const groupAbs = resolve(CWD, rootDir);
 
   if (!existsSync(groupAbs)) {
-    pail.warn(`目录不存在，跳过：${chalk.dim(group.rootDir)}`);
+    pail.warn(`目录不存在，跳过：${chalk.dim(rootDir)}`);
     return;
   }
 
-  console.log(chalk.bold(`\n📦 ${group.name}  (${group.rootDir})`));
+  console.log(chalk.bold(`\n📦 ${name}  (${rootDir})`));
 
   // Step 1: 扫描一级子目录（子模块）
   let entries: import("node:fs").Dirent[];
@@ -432,22 +432,22 @@ export async function barrelCommand(options: BarrelOptions = {}): Promise<void> 
   const raw = readFileSync(CONFIG_PATH, { encoding: "utf-8" });
   const config = JSON.parse(raw) as ApiGenRootConfig;
 
-  if (!config.exportIndex || !config.exportIndex.groups.length) {
+  const ei = config.exportIndex;
+  if (!ei || !ei.includes?.length) {
     pail.warn(
-      "未配置 barrel 导出组。请在 .vscode/api-gen.json 中添加 exportIndex.groups 配置，如：\n" +
-      chalk.dim(JSON.stringify({ exportIndex: { groups: [{ name: "utils", rootDir: "packages/contract/src/utils" }] } }, null, 2)),
+      "未配置 barrel 导出组。请在 .vscode/api-gen.json 中添加 exportIndex，如：\n" +
+      chalk.dim(JSON.stringify({ exportIndex: { includes: ["utils"], utils: ["packages/contract/src/utils"] } }, null, 2)),
     );
     return;
   }
 
-  let groups = config.exportIndex.groups;
+  let groupNames = ei.includes;
   if (options.group) {
-    const filtered = groups.filter((g) => g.name === options.group);
-    if (filtered.length === 0) {
-      pail.error(`未找到名为 "${options.group}" 的导出组。可用组：${groups.map((g) => g.name).join(", ")}`);
+    if (!groupNames.includes(options.group)) {
+      pail.error(`未找到导出组 "${options.group}"。可用组：${groupNames.join(", ")}`);
       return;
     }
-    groups = filtered;
+    groupNames = [options.group];
   }
 
   console.log(chalk.bold("\n🔷 api-gen barrel — 桶导出生成"));
@@ -455,12 +455,21 @@ export async function barrelCommand(options: BarrelOptions = {}): Promise<void> 
     console.log(chalk.yellow("  --dry-run 模式，仅预览不写入\n"));
   }
 
-  for (const group of groups) {
-    processGroup(group, !!options.dryRun);
+  let totalPaths = 0;
+  for (const name of groupNames) {
+    const paths = ei[name];
+    if (!paths || paths.length === 0) {
+      pail.warn(`"${name}" 未配置路径，跳过。请编辑 exportIndex.${name} 添加路径`);
+      continue;
+    }
+    for (const rootDir of paths) {
+      processGroup(name, rootDir, !!options.dryRun);
+      totalPaths++;
+    }
   }
 
   const mode = options.dryRun ? "(dry-run)" : "已生成";
-  pail.success(`\n  ${mode} ${groups.length} 个组的 barrel 导出`);
+  pail.success(`\n  ${mode} ${totalPaths} 个路径的 barrel 导出`);
   console.log(chalk.dim("提示：所有生成文件均带有自动标记，可随时安全地重新运行 `api-gen barrel` 覆盖"));
 }
 
