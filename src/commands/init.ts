@@ -123,7 +123,7 @@ export async function askConfirm(message: string): Promise<boolean> {
 export async function initCommand(directory?: string): Promise<void> {
   const cwd = directory ? resolve(directory) : process.cwd();
 
-  pail.verbose(`\n  正在扫描目录：${cwd} …`);
+  pail.debug(`\n  正在扫描目录：${cwd} …`);
 
   const config = detectLayout(cwd);
 
@@ -168,7 +168,7 @@ export async function initCommand(directory?: string): Promise<void> {
   const tplPath = join(vscodeDir, "ai-prompt.template.md");
   initDefaultPromptTemplate(tplPath);
   if (existsSync(tplPath)) {
-    pail.verbose(`  已初始化 AI 提示词模板：${tplPath}`);
+    pail.debug(`  已初始化 AI 提示词模板：${tplPath}`);
   }
 
   // 组装摘要文本

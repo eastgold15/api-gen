@@ -1,4 +1,4 @@
-#!/usr/bin/env bun
+#!/usr/bin/env node
 import { createCerebro } from "@visulima/cerebro";
 import type { Toolbox } from "@visulima/cerebro";
 import chalk from "@visulima/colorize";

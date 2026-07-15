@@ -10,7 +10,7 @@
     "api-gen": "./dist/index.mjs"
   },
   "scripts": {
-    "build": "packem build",
+    "build": "packem build && npm link",
     "dev": "packem build  --watch",
     "type-check": "tsc --noEmit"
   },
