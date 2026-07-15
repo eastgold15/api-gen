@@ -84,9 +84,11 @@ export async function syncCommand(): Promise<void> {
   for (const name of current.includes) {
     const existingPaths = current[name];
     if (existingPaths && existingPaths.length > 0) {
-      // 已有路径 → 保留不动
-      updated[name] = existingPaths;
-      console.log(chalk.dim(`  ${name}: 保留 ${existingPaths.length} 个路径`));
+      // 过滤掉已不存在的目录
+      const validPaths = existingPaths.filter((p) => existsSync(resolve(cwd, p)));
+      if (validPaths.length !== existingPaths.length) changed = true;
+      updated[name] = validPaths;
+      console.log(chalk.dim(`  ${name}: 保留 ${validPaths.length} 个路径${validPaths.length < existingPaths.length ? chalk.yellow(`，移除 ${existingPaths.length - validPaths.length} 个失效路径`) : ""}`));
     } else if (scanned[name]?.length) {
       // 空路径 → 用扫描结果填充
       updated[name] = scanned[name];

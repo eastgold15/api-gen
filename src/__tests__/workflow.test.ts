@@ -202,4 +202,19 @@ describe("monorepo 完整流程", () => {
     expect(updated.exportIndex.hooks.length).toBe(1);
     expect(updated.exportIndex.hooks[0]).toContain("hooks");
   });
+
+  it("sync 移除已不存在的目录路径", async () => {
+    const before = JSON.parse(readFileSync(configPath, "utf-8"));
+    expect(before.exportIndex.utils.length).toBe(2);
+
+    // 删除一个路径对应的目录
+    rmSync(join(root, "apps/api/src/utils"), { recursive: true });
+
+    await runCmd(root, "../commands/sync.js", "syncCommand");
+
+    const after = JSON.parse(readFileSync(configPath, "utf-8"));
+    expect(after.exportIndex.utils.length).toBe(1);
+    expect(after.exportIndex.utils[0]).toContain("contract");
+    expect(after.exportIndex.utils[0]).not.toContain("apps/api");
+  });
 });
