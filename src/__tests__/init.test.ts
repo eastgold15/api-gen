@@ -46,6 +46,7 @@ export const user = new Elysia({ prefix: "/users" })
     const config = detectLayout(TMP_ROOT);
     expect(config.apps[0]!.controllersDir).toContain("src");
     expect(config.apps[0]!.serviceDir).toContain("src");
+    expect(config.apps[0]!.backRoot).toContain("src");
   });
 
   it("structureTree 包含分层文件 (controller/server)", () => {
@@ -110,6 +111,7 @@ export const goods = new Elysia({ prefix: "/goods" })
     const config = detectLayout(TMP_ROOT);
     expect(config.apps.length).toBe(1);
     expect(config.apps[0]!.appName).toBe("api");
+    expect(config.apps[0]!.backRoot).toContain("src");
   });
 
   it("structureTree 反映 packages + apps 层级", () => {
@@ -159,6 +161,7 @@ export const goodsController = new Elysia({ prefix: "/goods" })
     expect(web!.controllersDir).toContain("server");
     expect(web!.controllersDir).toContain("controllers");
     expect(web!.serviceDir).toContain("server");
+    expect(web!.backRoot).toContain("server");
   });
 
   it("识别 b2b-api 应用（src/server/ 目录下的 controller）", () => {
@@ -167,6 +170,7 @@ export const goodsController = new Elysia({ prefix: "/goods" })
     expect(b2b).toBeDefined();
     expect(b2b!.controllersDir).toContain("src");
     expect(b2b!.controllersDir).toContain("controllers");
+    expect(b2b!.backRoot).toContain("src");
   });
 
   it("structureTree 同时反映两种路径", () => {

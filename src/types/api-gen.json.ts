@@ -21,6 +21,8 @@ export interface CommonLayout {
 export interface AppLayout {
   appName: string;
   appRoot: string;
+  /** 后端实际代码根目录（src/ 或 server/），供 AI prompt 参考目录结构 */
+  backRoot: string;
   controllersDir: string | null;
   serviceDir: string | null;
 }

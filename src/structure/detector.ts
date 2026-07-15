@@ -1,5 +1,5 @@
 import { readdirSync, existsSync, readFileSync } from "node:fs";
-import { resolve, join, basename, dirname } from "@visulima/path";
+import { resolve, join, basename, dirname, sep } from "@visulima/path";
 import { parseTsFile, traverseAst } from "../utils/ast-scanner.js";
 import { buildStructureTree, Layer, SKIP_DIRS } from "../utils/tree-builder.js";
 import type { ApiGenRootConfig, AppLayout, CommonLayout } from "../types/api-gen.json.js";
@@ -78,6 +78,13 @@ function scanLayerFiles(appRootAbs: string, layer: Layer): string[] {
   return files;
 }
 
+/** 判断后端实际代码根目录：优先 server/，fallback 到 src/ */
+function detectBackRoot(appRootAbs: string, hasServerFiles: boolean): string {
+  return hasServerFiles && existsSync(resolve(appRootAbs, "server"))
+    ? resolve(appRootAbs, "server")
+    : resolve(appRootAbs, "src");
+}
+
 /** 扫描单个app目录，提取controller、server目录 */
 function scanSingleApp(appRootAbs: string): AppLayout {
   const appName = basename(appRootAbs);
@@ -89,9 +96,13 @@ function scanSingleApp(appRootAbs: string): AppLayout {
   let serviceDir: string | null = null;
   if (serviceFiles.length > 0) serviceDir = dirname(serviceFiles[0]);
 
+  const serverDirPrefix = resolve(appRootAbs, "server") + sep;
+  const hasServerFiles = [...ctrlFiles, ...serviceFiles].some((f) => f.startsWith(serverDirPrefix));
+
   return {
     appName,
     appRoot: resolve(appRootAbs, "src"),
+    backRoot: detectBackRoot(appRootAbs, hasServerFiles),
     controllersDir,
     serviceDir,
   };
@@ -107,9 +118,13 @@ function scanSingleAppMode(rootDir: string): AppLayout {
   let serviceDir: string | null = null;
   if (serviceFiles.length > 0) serviceDir = dirname(serviceFiles[0]);
 
+  const serverDirPrefix = resolve(rootDir, "server") + sep;
+  const hasServerFiles = [...ctrlFiles, ...serviceFiles].some((f) => f.startsWith(serverDirPrefix));
+
   return {
     appName: "main",
     appRoot: resolve(rootDir, "src"),
+    backRoot: detectBackRoot(rootDir, hasServerFiles),
     controllersDir,
     serviceDir,
   };

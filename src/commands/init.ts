@@ -62,10 +62,11 @@ function printLayout(config: ApiGenRootConfig): void {
 
   // 3. 应用列表表
   const appsTable = createTable();
-  appsTable.setHeaders([chalk.bold("应用"), chalk.bold("控制器目录"), chalk.bold("服务端目录")]);
+  appsTable.setHeaders([chalk.bold("应用"), chalk.bold("后端根目录"), chalk.bold("控制器目录"), chalk.bold("服务端目录")]);
   for (const app of config.apps) {
     appsTable.addRow([
       chalk.cyan(app.appName),
+      fmtVal(app.backRoot),
       fmtVal(app.controllersDir),
       fmtVal(app.serviceDir),
     ]);
