@@ -113,17 +113,38 @@ export function scanController(filePath: string): ControllerSpec {
 
 export function scanAllControllers(controllersDir: string): ControllerSpec[] {
   if (!existsSync(controllersDir)) return [];
-  const entries = readdirSync(controllersDir, { withFileTypes: true });
   const result: ControllerSpec[] = [];
-  for (const entry of entries) {
-    if (entry.isFile() && entry.name.endsWith(".controller.ts") && !entry.name.endsWith(".d.ts")) {
-      try {
-        const spec = scanController(join(controllersDir, entry.name));
-        if (spec.name) result.push(spec);
-      } catch {
-        continue;
+
+  function walk(dir: string) {
+    const entries = readdirSync(dir, { withFileTypes: true });
+    entries.sort((a, b) => a.name.localeCompare(b.name));
+
+    for (const entry of entries) {
+      const full = join(dir, entry.name);
+
+      if (entry.isDirectory()) {
+        if (SKIP_SCAN_DIRS.has(entry.name)) continue;
+        walk(full);
+      } else if (
+        entry.isFile() &&
+        entry.name.endsWith(".controller.ts") &&
+        !entry.name.endsWith(".d.ts")
+      ) {
+        try {
+          const spec = scanController(full);
+          if (spec.name) result.push(spec);
+        } catch {
+          continue;
+        }
       }
     }
   }
+
+  walk(controllersDir);
   return result;
 }
+
+const SKIP_SCAN_DIRS = new Set([
+  "node_modules", "dist", ".vscode", ".git", "scripts",
+  ".next", ".agengt", ".claude", ".lingma", "turbo",
+]);
