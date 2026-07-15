@@ -1,219 +1,44 @@
-import { boxen } from "@visulima/boxen";
-import chalk from "@visulima/colorize";
 import { ensureDirSync } from "@visulima/fs";
 import { pail } from "@visulima/pail";
-import { dirname, join, resolve } from "@visulima/path";
-import { createTable } from "@visulima/tabular";
-import inquirer from "inquirer";
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
-import { detectLayout } from "../structure/detector.js";
-import type { ApiGenRootConfig } from "../types/api-gen.json.js";
-import { initDefaultPromptTemplate } from "../utils/prompt-render.js";
+import { dirname, resolve } from "@visulima/path";
+import { existsSync, writeFileSync } from "node:fs";
+import type { ApiConfig } from "../types/api-gen.json.js";
 
 // ---------------------------------------------------------------------------
-// 格式化打印工具函数
+// 常量
 // ---------------------------------------------------------------------------
 
-function fmtVal(value: string | null): string {
-  return value === null ? chalk.dim("—") : chalk.cyan(value);
-}
+const CWD = process.cwd();
+const CONFIG_PATH = resolve(CWD, ".vscode/api-config.json");
 
-function fmtList(items: string[], maxInline = 8): string {
-  if (items.length === 0) return chalk.dim("—");
-  const head = items.slice(0, maxInline);
-  const tail =
-    items.length > maxInline
-      ? chalk.dim(` … 还有 ${items.length - maxInline} 项`)
-      : "";
-  return chalk.green(head.join(", ")) + tail;
-}
-
-function pathRelativeName(absPath: string): string {
-  const parts = absPath.replace(/\\/g, "/").split("/");
-  return parts.slice(-2).join("/");
-}
+const DEFAULT_CONFIG: ApiConfig = {
+  ai: {
+    provider: "deepseek",
+    model: "deepseek-chat",
+    apiKey: "请替换为你的API密钥",
+    baseUrl: "https://api.deepseek.com",
+  },
+  exportIndex: {
+    includes: ["utils"],
+  },
+};
 
 // ---------------------------------------------------------------------------
-// 表格打印函数
+// init 主命令逻辑（生成 api-config.json，CLI 脚本配置）
 // ---------------------------------------------------------------------------
 
-function printLayout(config: ApiGenRootConfig): void {
-  // 1. 项目信息表
-  const infoTable = createTable();
-  infoTable.setHeaders([chalk.bold("属性"), chalk.bold("值")]);
-  infoTable.addRow(["项目名称", chalk.bold(config.projectName)]);
-  infoTable.addRow(["项目类型", config.isMonorepo ? "Monorepo" : "单仓库"]);
-  console.log(infoTable.toString());
-
-  // 2. 公共合约层表
-  if (config.common) {
-    const c = config.common;
-    const commonTable = createTable();
-    commonTable.setHeaders([chalk.bold("公共层"), chalk.bold("值")]);
-    commonTable.addRow(["rootDir", fmtVal(c.rootDir)]);
-    commonTable.addRow(["schemaFiles", fmtList(c.schemaFiles.map(f => pathRelativeName(f)))]);
-    commonTable.addRow(["relationFiles", fmtList(c.relationFiles.map(f => pathRelativeName(f)))]);
-    commonTable.addRow(["contractFiles", fmtList(c.contractFiles.map(f => pathRelativeName(f)))]);
-    commonTable.addRow(["dtoDir", fmtVal(c.dtoDir)]);
-    commonTable.addRow(["existingSchemas", fmtList(c.existingSchemas)]);
-    commonTable.addRow(["existingContractModules", fmtList(c.existingContractModules)]);
-    console.log(commonTable.toString());
-  }
-
-  // 3. 应用列表表
-  const appsTable = createTable();
-  appsTable.setHeaders([chalk.bold("应用"), chalk.bold("后端根目录"), chalk.bold("控制器目录"), chalk.bold("服务端目录")]);
-  for (const app of config.apps) {
-    appsTable.addRow([
-      chalk.cyan(app.appName),
-      fmtVal(app.backRoot),
-      fmtVal(app.controllersDir),
-      fmtVal(app.serviceDir),
-    ]);
-  }
-  console.log(appsTable.toString());
-
-  // 4. AI 配置表
-  const aiTable = createTable();
-  aiTable.setHeaders([chalk.bold("AI 配置"), chalk.bold("值")]);
-  aiTable.addRow(["provider", config.ai.provider]);
-  aiTable.addRow(["model", config.ai.model]);
-  aiTable.addRow(["baseUrl", fmtVal(config.ai.baseUrl ?? null)]);
-  console.log(aiTable.toString());
-
-  // 5. 结构树
-  if (config.structureTree) {
-    console.log(chalk.bold("\n  🌳 项目结构树"));
-    console.log(chalk.dim(config.structureTree.split("\n").map(l => `    ${l}`).join("\n")));
-    console.log();
-  }
-}
-
-// ---------------------------------------------------------------------------
-// 交互确认
-// ---------------------------------------------------------------------------
-
-export async function askConfirm(message: string): Promise<boolean> {
-  const im = pail.getInteractiveManager();
-  if (im) im.suspend("stdout");
-
-  const { ok } = await inquirer.prompt([
-    {
-      type: "confirm",
-      name: "ok",
-      message,
-      default: true,
-    },
-  ]);
-
-  if (im) im.resume("stdout");
-  return ok;
-}
-
-// ---------------------------------------------------------------------------
-// barrel 配置合并
-// ---------------------------------------------------------------------------
-
-/**
- * 合并 exportIndex 配置：
- * - 无旧配置 → 用扫描结果
- * - 有旧配置 → 保留旧 includes 清单，空路径用扫描结果填充
- */
-function mergeExportIndex(
-  existing: Record<string, string[]> | undefined,
-  scanned: Record<string, string[]> | undefined,
-): Record<string, string[]> | undefined {
-  if (!scanned) return existing ?? scanned;
-  if (!existing || !existing.includes?.length) return scanned;
-
-  const merged: Record<string, string[]> = { includes: existing.includes };
-  for (const name of existing.includes) {
-    const existingPaths = existing[name];
-    if (existingPaths && existingPaths.length > 0) {
-      merged[name] = existingPaths;
-    } else if (scanned[name]?.length) {
-      merged[name] = scanned[name];
-    } else {
-      merged[name] = [];
-    }
-  }
-  return merged;
-}
-
-// ---------------------------------------------------------------------------
-// init 主命令逻辑
-// ---------------------------------------------------------------------------
-
-export async function initCommand(directory?: string): Promise<void> {
-  const cwd = directory ? resolve(directory) : process.cwd();
-
-  pail.debug(`\n  正在扫描目录：${cwd} …`);
-
-  const config = detectLayout(cwd);
-
-  printLayout(config);
-
-  const confirmed = await askConfirm("是否将检测到的项目结构保存到 .vscode/api-gen.json？");
-
-  if (!confirmed) {
-    pail.warn("\n  操作已取消。");
+export async function initCommand(): Promise<void> {
+  if (existsSync(CONFIG_PATH)) {
+    pail.warn(`api-config.json 已存在，跳过：${CONFIG_PATH}`);
+    pail.info("如需重新生成，请先删除该文件后重试");
     return;
   }
 
-  const configPath = resolve(cwd, ".vscode/api-gen.json");
+  ensureDirSync(dirname(CONFIG_PATH));
+  writeFileSync(CONFIG_PATH, JSON.stringify(DEFAULT_CONFIG, null, 2), "utf-8");
 
-  let existing: Record<string, unknown> = {};
-  if (existsSync(configPath)) {
-    try {
-      existing = JSON.parse(readFileSync(configPath, "utf-8")) as Record<string, unknown>;
-    } catch {
-      // 原有文件解析异常则忽略
-    }
-  }
-
-  const merged = {
-    ...existing,
-    projectName: config.projectName,
-    isMonorepo: config.isMonorepo,
-    structureTree: config.structureTree,
-    common: config.common,
-    apps: config.apps,
-    ai: existing.ai ?? config.ai,
-    exportIndex: mergeExportIndex(
-      existing.exportIndex as Record<string, string[]> | undefined,
-      config.exportIndex,
-    ),
-  };
-
-  ensureDirSync(dirname(configPath));
-  writeFileSync(configPath, JSON.stringify(merged, null, 2), "utf-8");
-
-  pail.success(`\n  项目配置已保存至 ${configPath}`);
-
-  const vscodeDir = dirname(configPath);
-  const tplPath = join(vscodeDir, "ai-prompt.template.md");
-  initDefaultPromptTemplate(tplPath);
-  if (existsSync(tplPath)) {
-    pail.debug(`  已初始化 AI 提示词模板：${tplPath}`);
-  }
-
-  const summary: string[] = [];
-  if (config.common) {
-    summary.push(`公共合约层包含 ${config.common.existingSchemas.length} 张表、${config.common.existingContractModules.length} 个合约`);
-  }
-  for (const app of config.apps) {
-    const parts = [`应用 "${app.appName}"`];
-    if (app.controllersDir) parts.push("有控制器");
-    if (app.serviceDir) parts.push("有服务端");
-    summary.push(parts.join("，"));
-  }
-  summary.push(`AI 驱动：${config.ai.provider} / ${config.ai.model}`);
-
-  console.log(boxen(summary.map((s) => `· ${s}`).join("\n"), {
-    headerText: "检测到项目模块",
-    padding: { left: 1, right: 1, top: 0, bottom: 0 },
-    borderStyle: "round",
-  }));
+  pail.success(`CLI 脚本配置已保存至 ${CONFIG_PATH}`);
+  pail.info("请编辑 ai.apiKey 后使用，然后运行 `api-gen sync` 填充 barrel 导出路径");
 }
 
 export default initCommand;

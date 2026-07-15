@@ -5,11 +5,13 @@ import chalk from "@visulima/colorize";
 // 静态导入所有命令
 import barrel from "./commands/barrel.js";
 import generate from "./commands/generate.js";
+import info from "./commands/info.js";
 import init from "./commands/init.js";
 import link from "./commands/link.js";
 import makePrompt from "./commands/make-prompt.js";
 import raw from "./commands/raw.js";
 import scan from "./commands/scan.js";
+import sync from "./commands/sync.js";
 
 const cli = createCerebro("api-gen", {
   packageName: "@eastgold15/api-gen",
@@ -18,15 +20,32 @@ const cli = createCerebro("api-gen", {
 
 cli.addCommand({
   name: "init",
-  description: "初始化全新 API 项目配置文件",
+  description: "生成 CLI 脚本配置（.vscode/api-config.json）",
+  execute: async () => {
+    await init();
+    console.log(chalk.green("脚本配置初始化完成。"));
+  },
+});
+
+cli.addCommand({
+  name: "sync",
+  description: "扫描项目目录，更新 exportIndex 路径配置",
+  execute: async () => {
+    await sync();
+    console.log(chalk.green("配置同步完成。"));
+  },
+});
+
+cli.addCommand({
+  name: "info",
+  description: "检测项目结构，生成 AI 上下文配置（.vscode/api-gen.json）",
   argument: {
     name: "directory",
     description: "项目目录",
     type: String,
   },
   execute: async ({ argument }: Toolbox) => {
-    await init(argument[0]);
-    console.log(chalk.green("项目初始化完成。"));
+    await info(argument[0]);
   },
 });
 

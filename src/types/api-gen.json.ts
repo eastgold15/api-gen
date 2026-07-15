@@ -48,7 +48,13 @@ export interface AppLayout {
  */
 export type ExportIndexConfig = Record<string, string[]>;
 
-/** 全局根配置唯一标准 */
+/** CLI 脚本配置（api-config.json） */
+export interface ApiConfig {
+  ai: AIConfig;
+  exportIndex: ExportIndexConfig;
+}
+
+/** 全局根配置：给 AI 看的项目结构（api-gen.json） */
 export interface ApiGenRootConfig {
   projectName: string;
   /** 仅展示标记，业务逻辑不做分支判断 */
@@ -57,8 +63,4 @@ export interface ApiGenRootConfig {
   structureTree: string;
   common: CommonLayout | null;
   apps: AppLayout[];
-  ai: AIConfig;
-
-  /** 桶导出（barrel）配置，可选 */
-  exportIndex?: ExportIndexConfig;
 }

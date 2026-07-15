@@ -13,7 +13,7 @@ import {
   type ProjectLayout as GeneratorLayout,
   type ControllerSpec as AIControllerSpec,
 } from "../generator/ai.js";
-import type { ApiGenRootConfig } from "../types/api-gen.json.js";
+import type { ApiGenRootConfig, ApiConfig } from "../types/api-gen.json.js";
 import type { ApiSpec, AppRouteGroup } from "./scan.js";
 
 // ---------------------------------------------------------------------------
@@ -283,17 +283,25 @@ export async function generateCommand(): Promise<void> {
   );
   console.log(chalk.dim(`  识别到 ${commonColumns.length} 个项目通用数据表字段\n`));
 
-  // 4. 读取 AI 服务商配置
-  const aiConfig: AIConfig = config.ai ?? {
-    provider: "deepseek",
-    model: "deepseek-chat",
-    apiKey: process.env.DEEPSEEK_API_KEY ?? "",
-  };
+  // 4. 读取 AI 服务商配置（从 api-config.json）
+  const apiConfigPath = resolve(CWD, ".vscode/api-config.json");
+  let aiConfig: AIConfig;
+  if (existsSync(apiConfigPath)) {
+    const apiConfigRaw = readFileSync(apiConfigPath, { encoding: "utf-8" });
+    const apiConfig = JSON.parse(apiConfigRaw) as ApiConfig;
+    aiConfig = apiConfig.ai;
+  } else {
+    aiConfig = {
+      provider: "deepseek",
+      model: "deepseek-chat",
+      apiKey: process.env.DEEPSEEK_API_KEY ?? "",
+    };
+  }
 
   if (!aiConfig.apiKey) {
     console.error(
       chalk.red(
-        "  未配置 AI 接口密钥，请在 .vscode/api-gen.json 填写 ai.apiKey，或配置环境变量 DEEPSEEK_API_KEY / OPENAI_API_KEY",
+        "  未配置 AI 接口密钥，请在 .vscode/api-config.json 填写 ai.apiKey，或配置环境变量 DEEPSEEK_API_KEY / OPENAI_API_KEY",
       ),
     );
     process.exit(1);
