@@ -1,6 +1,7 @@
-import { resolve } from "node:path";
-import { readFileSync, writeFileSync, existsSync } from "node:fs";
-import chalk from "chalk";
+import { resolve } from "@visulima/path";
+import { readFileSync, writeFileSync } from "@visulima/fs";
+import { existsSync, readdirSync } from "node:fs";
+import chalk from "@visulima/colorize";
 import { scanAllControllers, type ControllerSpec, type RouteSpec } from "../scanner/controller.js";
 import type { ApiGenRootConfig, AppLayout } from "../types/api-gen.json.js";
 
@@ -48,7 +49,7 @@ function groupRoutesByTag(routes: RouteSpec[]): Record<string, RouteSpec[]> {
 }
 
 function readConfig(configPath: string): ApiGenRootConfig {
-  const raw = readFileSync(configPath, "utf-8");
+  const raw = readFileSync(configPath, { encoding: "utf-8" });
   return JSON.parse(raw) as ApiGenRootConfig;
 }
 
@@ -56,7 +57,7 @@ function readConfig(configPath: string): ApiGenRootConfig {
 function readFileTexts(absPaths: string[]): string[] {
   return absPaths.map((p) => {
     try {
-      return readFileSync(p, "utf-8");
+      return readFileSync(p, { encoding: "utf-8" });
     } catch {
       return "";
     }
@@ -163,7 +164,7 @@ export async function scanCommand(): Promise<void> {
 
   // 写入本地 JSON 文件
   const json = JSON.stringify(spec, null, 2);
-  writeFileSync(outputPath, json, "utf-8");
+  writeFileSync(outputPath, json);
   console.log(chalk.green(`接口规格文件已保存至 ${chalk.underline(outputPath)}`));
   console.log(json);
 }

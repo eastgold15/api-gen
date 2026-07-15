@@ -1,5 +1,5 @@
-import fs from "node:fs";
-import path from "node:path";
+import { readdirSync, existsSync } from "node:fs";
+import { resolve, join, basename } from "@visulima/path";
 
 // 业务分层后缀
 type Layer = "controller" | "server" | "schema" | "relation" | "contract";
@@ -19,11 +19,11 @@ function scanDirTree(rootAbs: string, rootRel: string): DirInfo {
     layers: { controller: [], server: [], schema: [], relation: [], contract: [] },
     children: [],
   };
-  const entries = fs.readdirSync(rootAbs, { withFileTypes: true });
+  const entries = readdirSync(rootAbs, { withFileTypes: true });
   const childDirs: string[] = [];
 
   for (const entry of entries) {
-    const fullAbs = path.resolve(rootAbs, entry.name);
+    const fullAbs = resolve(rootAbs, entry.name);
     if (entry.isDirectory()) {
       if (SKIP_DIRS.has(entry.name)) continue;
       childDirs.push(fullAbs);
@@ -39,7 +39,7 @@ function scanDirTree(rootAbs: string, rootRel: string): DirInfo {
 
   // 递归子目录
   for (const childAbs of childDirs) {
-    const childRel = path.join(rootRel, path.basename(childAbs));
+    const childRel = join(rootRel, basename(childAbs));
     dir.children.push(scanDirTree(childAbs, childRel));
   }
   return dir;
@@ -65,7 +65,7 @@ function renderTreeText(root: DirInfo): string {
     for (let i = 0; i < node.children.length; i++) {
       const child = node.children[i];
       const isLastChild = i === node.children.length - 1;
-      const dirName = path.basename(child.relative);
+      const dirName = basename(child.relative);
       const branch = isLastChild ? "└── " : "├── ";
       lines.push(`${prefix}${branch}${dirName}`);
       // 子层级前缀

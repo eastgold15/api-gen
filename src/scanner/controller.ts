@@ -1,6 +1,6 @@
 import { parseTsFile, traverseAst, getStringValue, getObjectProperty } from "../utils/ast-scanner.js";
-import fs from "node:fs";
-import path from "node:path";
+import { readdirSync, existsSync } from "node:fs";
+import { resolve, join } from "@visulima/path";
 
 export interface RouteSpec {
   method: string;
@@ -20,7 +20,7 @@ export interface ControllerSpec {
 const HTTP_METHODS = new Set(["get", "post", "put", "patch", "delete"]);
 
 export function scanController(filePath: string): ControllerSpec {
-  const absPath = path.resolve(filePath);
+  const absPath = resolve(filePath);
   const { program } = parseTsFile(absPath);
 
   let controllerName = "";
@@ -112,13 +112,13 @@ export function scanController(filePath: string): ControllerSpec {
 }
 
 export function scanAllControllers(controllersDir: string): ControllerSpec[] {
-  if (!fs.existsSync(controllersDir)) return [];
-  const entries = fs.readdirSync(controllersDir, { withFileTypes: true });
+  if (!existsSync(controllersDir)) return [];
+  const entries = readdirSync(controllersDir, { withFileTypes: true });
   const result: ControllerSpec[] = [];
   for (const entry of entries) {
     if (entry.isFile() && entry.name.endsWith(".controller.ts") && !entry.name.endsWith(".d.ts")) {
       try {
-        const spec = scanController(path.join(controllersDir, entry.name));
+        const spec = scanController(join(controllersDir, entry.name));
         if (spec.name) result.push(spec);
       } catch {
         continue;

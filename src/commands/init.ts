@@ -1,8 +1,10 @@
-import { resolve, dirname, join } from "node:path";
-import { writeFileSync, mkdirSync, readFileSync, existsSync } from "node:fs";
+import { resolve, dirname, join } from "@visulima/path";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { ensureDirSync } from "@visulima/fs";
 import { createInterface } from "node:readline/promises";
 import { stdin as processStdin, stdout as processStdout } from "node:process";
-import chalk from "chalk";
+import chalk from "@visulima/colorize";
+import { boxen } from "@visulima/boxen";
 import { detectLayout } from "../structure/detector.js";
 import type { ApiGenRootConfig, AppLayout, CommonLayout } from "../types/api-gen.json.js";
 import { initDefaultPromptTemplate } from "../utils/prompt-render.js";
@@ -80,14 +82,13 @@ function pathRelativeName(absPath: string): string {
 }
 
 async function askConfirm(message: string): Promise<boolean> {
+  processStdout.write(`\n${chalk.cyan("?")} ${message} ${chalk.dim("(确认Y / 取消n)")} `);
   const rl = createInterface({
     input: processStdin,
     output: processStdout,
   });
   try {
-    const answer = await rl.question(
-      `\n${chalk.cyan("?")} ${message} ${chalk.dim("(确认Y / 取消n)")} `,
-    );
+    const answer = await rl.question("");
     const trimmed = answer.trim().toLowerCase();
     return trimmed === "" || trimmed === "y" || trimmed === "yes";
   } finally {
@@ -137,7 +138,7 @@ export async function initCommand(directory?: string): Promise<void> {
     ai: existing.ai ?? config.ai,
   };
 
-  mkdirSync(dirname(configPath), { recursive: true });
+  ensureDirSync(dirname(configPath));
   writeFileSync(configPath, JSON.stringify(merged, null, 2), "utf-8");
 
   console.log(chalk.green(`\n  项目配置已保存至 ${configPath}\n`));
@@ -163,11 +164,11 @@ export async function initCommand(directory?: string): Promise<void> {
   }
   summary.push(`AI 驱动：${config.ai.provider} / ${config.ai.model}`);
 
-  console.log(chalk.dim("  本次检测到项目模块："));
-  for (const item of summary) {
-    console.log(chalk.dim(`    · ${item}`));
-  }
-
+  console.log(boxen(summary.map((s) => `· ${s}`).join("\n"), {
+    headerText: "检测到项目模块",
+    padding: { left: 1, right: 1, top: 0, bottom: 0 },
+    borderStyle: "round",
+  }));
   console.log();
 }
 

@@ -1,10 +1,10 @@
 import { parseSync, ParseResult } from "oxc-parser";
-import fs from "node:fs";
-import path from "node:path";
+import { readFileSync } from "@visulima/fs";
+import { basename } from "@visulima/path";
 
 export function parseTsFile(fileAbsPath: string): ParseResult {
-  const sourceCode = fs.readFileSync(fileAbsPath, "utf-8");
-  const fileName = path.basename(fileAbsPath);
+  const sourceCode = readFileSync(fileAbsPath);
+  const fileName = basename(fileAbsPath);
 
   return parseSync(fileName, sourceCode, {
     lang: "ts",

@@ -1,5 +1,5 @@
-import fs from "node:fs";
-import path from "node:path";
+import { readFileSync, writeFileSync, existsSync } from "node:fs";
+import { dirname, join } from "@visulima/path";
 
 export type PromptTemplateVars = {
   PROJECT_NAME: string;
@@ -15,10 +15,10 @@ export type PromptTemplateVars = {
 
 /** 读取提示词模板文件 */
 export function readPromptTemplate(tplPath: string): string {
-  if (!fs.existsSync(tplPath)) {
+  if (!existsSync(tplPath)) {
     throw new Error("ai-prompt.template.md 不存在，请先执行 api-gen init");
   }
-  return fs.readFileSync(tplPath, "utf-8");
+  return readFileSync(tplPath, { encoding: "utf-8" });
 }
 
 /** 替换占位符，渲染成品提示词 */
@@ -33,7 +33,7 @@ export function renderPromptTemplate(tpl: string, vars: PromptTemplateVars): str
 
 /** 初始化默认模板文件（init 调用） */
 export function initDefaultPromptTemplate(tplPath: string) {
-  if (fs.existsSync(tplPath)) return;
+  if (existsSync(tplPath)) return;
   const templateContent = `# 后端分层代码生成任务
 
 ## 1. 项目基础信息
@@ -102,7 +102,7 @@ export function initDefaultPromptTemplate(tplPath: string) {
 5. 多应用隔离，代码写入对应 app 目录，不跨应用混淆；
 6. 数据库操作使用全局 schema 表，不重复定义表结构。
 `;
-  fs.writeFileSync(tplPath, templateContent, "utf-8");
+  writeFileSync(tplPath, templateContent);
 }
 
 /** 拼接 ts 代码块工具 */

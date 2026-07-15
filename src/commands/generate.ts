@@ -1,7 +1,8 @@
 #!/usr/bin/env bun
-import fs from "node:fs";
-import path from "node:path";
-import chalk from "chalk";
+import { existsSync, readdirSync } from "node:fs";
+import { readFileSync, writeFileSync, ensureDirSync } from "@visulima/fs";
+import { resolve, dirname, join } from "@visulima/path";
+import chalk from "@visulima/colorize";
 import {
   callAI,
   buildSystemPrompt,
@@ -55,8 +56,8 @@ interface ModuleGroup {
 const CWD = process.cwd();
 
 function readJson<T>(filePath: string): T {
-  const fullPath = path.resolve(CWD, filePath);
-  const raw = fs.readFileSync(fullPath, "utf-8");
+  const fullPath = resolve(CWD, filePath);
+  const raw = readFileSync(fullPath, { encoding: "utf-8" });
   return JSON.parse(raw) as T;
 }
 
@@ -71,16 +72,16 @@ function toGeneratorLayout(config: ApiGenRootConfig): GeneratorLayout {
   if (config.common) {
     for (const sf of config.common.schemaFiles) {
       try {
-        const fullPath = path.resolve(CWD, sf);
-        existingTables.push(fs.readFileSync(fullPath, "utf-8"));
+        const fullPath = resolve(CWD, sf);
+        existingTables.push(readFileSync(fullPath, { encoding: "utf-8" }));
       } catch {
         console.warn(chalk.yellow(`  [警告] 读取数据表文件失败：${sf}`));
       }
     }
     for (const cf of config.common.contractFiles) {
       try {
-        const fullPath = path.resolve(CWD, cf);
-        existingContracts.push(fs.readFileSync(fullPath, "utf-8"));
+        const fullPath = resolve(CWD, cf);
+        existingContracts.push(readFileSync(fullPath, { encoding: "utf-8" }));
       } catch {
         console.warn(chalk.yellow(`  [警告] 读取合约文件失败：${cf}`));
       }
@@ -90,19 +91,19 @@ function toGeneratorLayout(config: ApiGenRootConfig): GeneratorLayout {
   // 也在每个 app 的 server 目录下查找 schema/contract
   for (const app of config.apps) {
     if (app.serverDir) {
-      const serverAbs = path.resolve(CWD, app.serverDir);
+      const serverAbs = resolve(CWD, app.serverDir);
       try {
-        const entries = fs.readdirSync(serverAbs, { withFileTypes: true });
+        const entries = readdirSync(serverAbs, { withFileTypes: true });
         for (const entry of entries) {
           if (!entry.isFile()) continue;
           if (entry.name.endsWith(".schema.ts")) {
             existingTables.push(
-              fs.readFileSync(path.join(serverAbs, entry.name), "utf-8"),
+              readFileSync(join(serverAbs, entry.name), { encoding: "utf-8" }),
             );
           }
           if (entry.name.endsWith(".contract.ts")) {
             existingContracts.push(
-              fs.readFileSync(path.join(serverAbs, entry.name), "utf-8"),
+              readFileSync(join(serverAbs, entry.name), { encoding: "utf-8" }),
             );
           }
         }
@@ -212,29 +213,26 @@ function buildSharedInfo(
 }
 
 function writeSchemaFile(filePath: string, content: string): void {
-  const absPath = path.resolve(CWD, filePath);
-  fs.mkdirSync(path.dirname(absPath), { recursive: true });
-  if (fs.existsSync(absPath)) {
-    fs.appendFileSync(absPath, `\n${content.trim()}\n`, "utf-8");
-  } else {
-    fs.writeFileSync(absPath, `${content.trim()}\n`, "utf-8");
-  }
+  const absPath = resolve(CWD, filePath);
+  ensureDirSync(dirname(absPath));
+  const existing = existsSync(absPath) ? readFileSync(absPath) : "";
+  writeFileSync(absPath, existing ? `${existing}\n${content.trim()}\n` : `${content.trim()}\n`);
 }
 
 function writeContractFile(filePath: string, content: string): void {
-  const absPath = path.resolve(CWD, filePath);
-  fs.mkdirSync(path.dirname(absPath), { recursive: true });
-  fs.writeFileSync(absPath, `${content.trim()}\n`, "utf-8");
+  const absPath = resolve(CWD, filePath);
+  ensureDirSync(dirname(absPath));
+  writeFileSync(absPath, `${content.trim()}\n`);
 }
 
 function validateEnvironment(): string | null {
-  const genPath = path.resolve(CWD, ".vscode/api-gen.json");
-  const specPath = path.resolve(CWD, ".vscode/api-spec.json");
+  const genPath = resolve(CWD, ".vscode/api-gen.json");
+  const specPath = resolve(CWD, ".vscode/api-spec.json");
 
-  if (!fs.existsSync(genPath)) {
+  if (!existsSync(genPath)) {
     return `缺少配置文件 .vscode/api-gen.json，请先执行 api-gen init`;
   }
-  if (!fs.existsSync(specPath)) {
+  if (!existsSync(specPath)) {
     return `缺少接口扫描文件 .vscode/api-spec.json，请先执行 api-gen scan`;
   }
 
@@ -327,7 +325,7 @@ export async function generateCommand(): Promise<void> {
     if (aiResponse.schemaAdditions) {
       for (const [relPath, content] of Object.entries(aiResponse.schemaAdditions)) {
         if (!content?.trim()) continue;
-        const alreadyExists = fs.existsSync(path.resolve(CWD, relPath));
+        const alreadyExists = existsSync(resolve(CWD, relPath));
         writeSchemaFile(relPath, content);
         if (alreadyExists) {
           modifiedFiles.push(relPath);
@@ -342,7 +340,7 @@ export async function generateCommand(): Promise<void> {
     if (aiResponse.contractAdditions) {
       for (const [relPath, content] of Object.entries(aiResponse.contractAdditions)) {
         if (!content?.trim()) continue;
-        const alreadyExists = fs.existsSync(path.resolve(CWD, relPath));
+        const alreadyExists = existsSync(resolve(CWD, relPath));
         writeContractFile(relPath, content);
         if (alreadyExists) {
           modifiedFiles.push(relPath);

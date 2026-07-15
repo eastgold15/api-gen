@@ -30,6 +30,7 @@
     "@types/bun": "^1.3.14",
     "@visulima/packem": "^1.28.3",
     "@visulima/tsconfig": "^3.0.1",
+    "oxc-transform": "^0.140.0",
     "typescript": "^7.0.2"
   }
 }

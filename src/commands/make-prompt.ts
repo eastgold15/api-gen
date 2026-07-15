@@ -1,6 +1,7 @@
-import { resolve } from "node:path";
-import { readFileSync, writeFileSync, existsSync } from "node:fs";
-import chalk from "chalk";
+import { resolve } from "@visulima/path";
+import { existsSync } from "node:fs";
+import { readFileSync, writeFileSync } from "@visulima/fs";
+import chalk from "@visulima/colorize";
 import {
   readPromptTemplate,
   renderPromptTemplate,
@@ -11,7 +12,7 @@ import type { ApiSpec } from "./scan.js";
 
 /** 读取扫描产物 api-spec.json */
 function readApiSpec(specPath: string): ApiSpec {
-  const raw = readFileSync(specPath, "utf-8");
+  const raw = readFileSync(specPath, { encoding: "utf-8" });
   return JSON.parse(raw) as ApiSpec;
 }
 
@@ -75,7 +76,7 @@ export async function makePromptCommand(tag?: string, singlePath?: string) {
   // 渲染输出成品提示词
   const templateText = readPromptTemplate(templatePath);
   const finalPrompt = renderPromptTemplate(templateText, vars);
-  writeFileSync(outputPromptPath, finalPrompt, "utf-8");
+  writeFileSync(outputPromptPath, finalPrompt);
 
   console.log(chalk.green("✅ 提示词文件生成完成"));
   console.log(chalk.cyan("输出路径："), chalk.underline(outputPromptPath));
