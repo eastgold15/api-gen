@@ -9,6 +9,7 @@ type Layer = "controller" | "server" | "schema" | "relation" | "contract";
 
 /** 递归获取指定分层全部文件绝对路径 */
 function getLayerFilePaths(root: string, layer: Layer): string[] {
+  if (!existsSync(root)) return [];
   const res: string[] = [];
   const entries = readdirSync(root, { withFileTypes: true });
   for (const entry of entries) {

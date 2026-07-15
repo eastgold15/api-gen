@@ -24,7 +24,6 @@
     "@visulima/boxen": "^3.0.0",
     "@visulima/cerebro": "^3.0.0",
     "@visulima/colorize": "^2.0.0",
-    "@visulima/command-line-args": "^2.0.0",
     "@visulima/error": "^6.0.0",
     "@visulima/find-cache-dir": "^3.0.0",
     "@visulima/fmt": "^2.0.0",

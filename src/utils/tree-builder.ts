@@ -4,7 +4,7 @@ import { resolve, join, basename } from "@visulima/path";
 // 业务分层后缀
 type Layer = "controller" | "server" | "schema" | "relation" | "contract";
 const LAYERS: Layer[] = ["controller", "server", "schema", "relation", "contract"];
-const SKIP_DIRS = new Set(["node_modules", "dist", ".vscode", ".git", "scripts", "src", "commands", "generator", "scanner", "types", "utils", "shared"]);
+const SKIP_DIRS = new Set(["node_modules", "dist", ".vscode", ".git", "scripts", "commands", "generator", "scanner", "types", "utils", "shared"]);
 
 type DirInfo = {
   relative: string;
