@@ -2,9 +2,9 @@ import { readdirSync, existsSync } from "node:fs";
 import { resolve, join, basename } from "@visulima/path";
 
 // 业务分层后缀
-type Layer = "controller" | "server" | "schema" | "relation" | "contract";
-const LAYERS: Layer[] = ["controller", "server", "schema", "relation", "contract"];
-const SKIP_DIRS = new Set(["node_modules", "dist", ".vscode", ".git", "scripts", "commands", "generator", "scanner", "types", "utils", "shared"]);
+export type Layer = "controller" | "server" | "schema" | "relation" | "contract";
+export const LAYERS: Layer[] = ["controller", "server", "schema", "relation", "contract"];
+export const SKIP_DIRS = new Set(["node_modules", "dist", ".vscode", ".git", "scripts", ".next", ".agengt", ".claude", ".lingma", "turbo"]);
 
 type DirInfo = {
   relative: string;

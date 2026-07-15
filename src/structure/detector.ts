@@ -1,11 +1,10 @@
 import { readdirSync, existsSync, readFileSync } from "node:fs";
 import { resolve, join, basename, dirname } from "@visulima/path";
 import { parseTsFile, traverseAst } from "../utils/ast-scanner.js";
-import { buildStructureTree } from "../utils/tree-builder.js";
+import { buildStructureTree, Layer, SKIP_DIRS } from "../utils/tree-builder.js";
 import type { ApiGenRootConfig, AppLayout, CommonLayout } from "../types/api-gen.json.js";
 
-const SKIP_DIRS = new Set(["node_modules", "dist", ".vscode", ".git", "scripts"]);
-type Layer = "controller" | "server" | "schema" | "relation" | "contract";
+
 
 /** 递归获取指定分层全部文件绝对路径 */
 function getLayerFilePaths(root: string, layer: Layer): string[] {
