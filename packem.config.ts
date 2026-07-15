@@ -6,5 +6,5 @@ export default defineConfig({
   runtime: "node",
   validation: false,
   failOnWarn: false,
-  transformer,
+  transformer
 });

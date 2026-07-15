@@ -1,5 +1,6 @@
 #!/usr/bin/env bun
-import Cli from "@visulima/cerebro";
+import { createCerebro } from "@visulima/cerebro";
+import type { Toolbox } from "@visulima/cerebro";
 import chalk from "@visulima/colorize";
 // 静态导入所有命令
 import generate from "./commands/generate.js";
@@ -7,7 +8,7 @@ import init from "./commands/init.js";
 import makePrompt from "./commands/make-prompt.js";
 import scan from "./commands/scan.js";
 
-const cli = new Cli("api-gen", {
+const cli = createCerebro("api-gen", {
   packageName: "@eastgold15/api-gen",
   packageVersion: "0.1.0",
 });
@@ -20,7 +21,7 @@ cli.addCommand({
     description: "项目目录",
     type: String,
   },
-  execute: async ({ argument }) => {
+  execute: async ({ argument }: Toolbox) => {
     await init(argument[0]);
     console.log(chalk.green("项目初始化完成。"));
   },
@@ -38,8 +39,8 @@ cli.addCommand({
       defaultValue: ".",
     },
   ],
-  execute: async ({ options }) => {
-    await scan(options.path);
+  execute: async ({ options }: Toolbox) => {
+    await scan(options.path as string);
     console.log(chalk.green("项目扫描完成。"));
   },
 });
@@ -61,8 +62,8 @@ cli.addCommand({
       type: String,
     },
   ],
-  execute: async ({ options }) => {
-    await makePrompt({ tag: options.tag, path: options.path });
+  execute: async ({ options }: Toolbox) => {
+    await makePrompt({ tag: options.tag as string | undefined, path: options.path as string | undefined });
     console.log(chalk.green("提示词文件生成完成。"));
   },
 });
@@ -79,8 +80,8 @@ cli.addCommand({
       defaultValue: "./generated",
     },
   ],
-  execute: async ({ options }) => {
-    await generate(options.output);
+  execute: async ({ options }: Toolbox) => {
+    await generate(options.output as string);
     console.log(chalk.green("代码生成完成。"));
   },
 });

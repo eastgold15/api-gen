@@ -22,8 +22,8 @@
   },
   "dependencies": {
     "@visulima/boxen": "^3.0.0",
-    "@visulima/cerebro": "^1.0.0",
-    "@visulima/colorize": "^1.0.0",
+    "@visulima/cerebro": "^3.0.0",
+    "@visulima/colorize": "^2.0.0",
     "@visulima/command-line-args": "^2.0.0",
     "@visulima/error": "^6.0.0",
     "@visulima/find-cache-dir": "^3.0.0",
@@ -41,7 +41,6 @@
     "@types/inquirer": "^9.0.10",
     "@visulima/packem": "^1.28.3",
     "@visulima/tsconfig": "^3.0.1",
-    "oxc-transform": "^0.140.0",
     "typescript": "^7.0.2"
   }
 }
