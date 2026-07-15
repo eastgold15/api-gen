@@ -72,7 +72,7 @@ function scanSingleApp(appRootAbs: string): AppLayout {
   const appName = basename(appRootAbs);
   const srcRoot = resolve(appRootAbs, "src");
   const ctrlFiles = getLayerFilePaths(srcRoot, "controller");
-  const serviceFiles = getLayerFilePaths(srcRoot, "server");
+  const serviceFiles = getLayerFilePaths(srcRoot, "service");
 
   let controllersDir: string | null = null;
   if (ctrlFiles.length > 0) controllersDir = dirname(ctrlFiles[0]);
@@ -91,7 +91,7 @@ function scanSingleApp(appRootAbs: string): AppLayout {
 function scanSingleAppMode(rootDir: string): AppLayout {
   const srcRoot = resolve(rootDir, "src");
   const ctrlFiles = getLayerFilePaths(srcRoot, "controller");
-  const serviceFiles = getLayerFilePaths(srcRoot, "server");
+  const serviceFiles = getLayerFilePaths(srcRoot, "service");
 
   let controllersDir: string | null = null;
   if (ctrlFiles.length > 0) controllersDir = dirname(ctrlFiles[0]);

@@ -21,7 +21,7 @@ import { Elysia } from "elysia";
 export const user = new Elysia({ prefix: "/users" })
   .get("/", () => "list", { detail: { summary: "用户列表", tags: ["user"] } });
 `, "utf-8");
-    writeFileSync(join(TMP_ROOT, "src/user.server.ts"), "// 业务逻辑", "utf-8");
+    writeFileSync(join(TMP_ROOT, "src/user.service.ts"), "// 业务逻辑", "utf-8");
   });
 
   afterAll(() => {
@@ -51,7 +51,7 @@ export const user = new Elysia({ prefix: "/users" })
   it("structureTree 包含分层文件 (controller/server)", () => {
     const tree = detectLayout(TMP_ROOT).structureTree;
     expect(tree).toContain("user.controller.ts");
-    expect(tree).toContain("user.server.ts");
+    expect(tree).toContain("user.service.ts");
   });
 
   it("common 层为 null", () => {
@@ -87,7 +87,7 @@ import { Elysia } from "elysia";
 export const goods = new Elysia({ prefix: "/goods" })
   .get("/", () => "list", { detail: { summary: "商品列表", tags: ["goods"] } });
 `, "utf-8");
-    writeFileSync(join(TMP_ROOT, "apps/api/src/goods.server.ts"), '', "utf-8");
+    writeFileSync(join(TMP_ROOT, "apps/api/src/goods.service.ts"), '', "utf-8");
   });
 
   afterAll(() => {

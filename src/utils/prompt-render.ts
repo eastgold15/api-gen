@@ -49,7 +49,7 @@ export function initDefaultPromptTemplate(tplPath: string) {
 ### 分层存放硬性规则
 
 1. controller 路由：对应 app 的 controllersDir
-2. server 业务逻辑：对应 app 的 serverDir
+2. server 业务逻辑：对应 app 的 serviceDir
 3. 全局 schema / relation / contract 统一放在 packages/contract
 
 ### 分层职责强制约定

@@ -23,7 +23,7 @@ function buildAppListText(apps: ApiSpec["projectContext"]["apps"]): string {
       return format("- 应用名：%s\n  controller目录：%s\n  server目录：%s", [
         app.appName,
         app.controllerDir ?? "无",
-        app.serverDir ?? "无",
+        app.serviceDir ?? "无",
       ]);
     })
     .join("\n");

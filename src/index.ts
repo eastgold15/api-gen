@@ -5,6 +5,7 @@ import chalk from "@visulima/colorize";
 // 静态导入所有命令
 import generate from "./commands/generate.js";
 import init from "./commands/init.js";
+import link from "./commands/link.js";
 import makePrompt from "./commands/make-prompt.js";
 import scan from "./commands/scan.js";
 
@@ -83,6 +84,15 @@ cli.addCommand({
   execute: async ({ options }: Toolbox) => {
     await generate(options.output as string);
     console.log(chalk.green("代码生成完成。"));
+  },
+});
+
+cli.addCommand({
+  name: "link",
+  description: "自动生成 controllers/index.ts，统一导出所有控制器",
+  execute: async () => {
+    await link();
+    console.log(chalk.green("控制器链接完成。"));
   },
 });
 
