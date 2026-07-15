@@ -3,6 +3,7 @@ import { readFileSync, writeFileSync } from "@visulima/fs";
 import { resolve, join, dirname, basename } from "@visulima/path";
 import chalk from "@visulima/colorize";
 import { pail } from "@visulima/pail";
+import { parseTsFile, traverseAst } from "../utils/ast-scanner.js";
 import type { ApiGenRootConfig } from "../types/api-gen.json.js";
 
 // ---------------------------------------------------------------------------
@@ -10,11 +11,11 @@ import type { ApiGenRootConfig } from "../types/api-gen.json.js";
 // ---------------------------------------------------------------------------
 
 interface ControllerFile {
-  /** 相对于 controllersDir 的路径，如 "user.controller.ts" / "invitation/invitation-public.controller.ts" */
+  /** 相对于 controllersDir 的路径，如 "user.controller.ts" */
   relativePath: string;
-  /** ESM import 路径，如 "./user.controller.js" */
+  /** import 路径（无后缀），如 "./user.controller" */
   importPath: string;
-  /** JS 变量名，如 "userController" / "invitationPublicController" */
+  /** 从源码提取的实际 export 变量名 */
   variableName: string;
 }
 
@@ -31,13 +32,63 @@ const SKIP_DIRS = new Set([
 ]);
 
 // ---------------------------------------------------------------------------
-// 工具函数
+// AST 提取 export 变量名
 // ---------------------------------------------------------------------------
 
-/** kebab-case 文件名 → camelCase 变量名 */
+/**
+ * 用 OXc 解析 controller 文件，提取 export const xxx = new Elysia(...) 的变量名
+ * 返回 null 表示未找到合法 Elysia 导出
+ */
+/** 递归检查表达式中是否包含 new Elysia(...) */
+function isElysiaExpression(node: any): boolean {
+  if (!node) return false;
+  if (
+    node.type === "NewExpression" &&
+    node.callee?.type === "Identifier" &&
+    node.callee.name === "Elysia"
+  ) return true;
+  // new Elysia(...).get(...).post(...) 链式调用
+  if (node.type === "CallExpression" && node.callee?.type === "MemberExpression") {
+    return isElysiaExpression(node.callee.object);
+  }
+  return false;
+}
+
+function extractExportName(filePath: string): string | null {
+  try {
+    const { program } = parseTsFile(filePath);
+    let found: string | null = null;
+
+    traverseAst(program, (node) => {
+      if (found) return;
+
+      if (
+        node.type === "ExportNamedDeclaration" &&
+        node.declaration?.type === "VariableDeclaration" &&
+        node.declaration.declarations?.length > 0
+      ) {
+        const d = node.declaration.declarations[0];
+        if (isElysiaExpression(d.init) && d.id?.type === "Identifier") {
+          found = d.id.name;
+        }
+      }
+    });
+
+    return found;
+  } catch {
+    return null;
+  }
+}
+
+/** 校验 camelCase */
+function isCamelCase(name: string): boolean {
+  return /^[a-z][a-zA-Z0-9]*$/.test(name);
+}
+
+/** kebab-case → camelCase（降级用） */
 function kebabToCamel(name: string): string {
-  const parts = name.split("-");
-  return parts
+  return name
+    .split("-")
     .map((s, i) =>
       i === 0
         ? s.toLowerCase()
@@ -46,18 +97,10 @@ function kebabToCamel(name: string): string {
     .join("");
 }
 
-/** 轻量检查文件是否是 Elysia 路由文件（有无 from "elysia"） */
-function isElysiaFile(filePath: string): boolean {
-  try {
-    // 只读前 4KB 就够了
-    const content = readFileSync(filePath, { encoding: "utf-8" });
-    return /from\s+["']elysia["']/.test(content);
-  } catch {
-    return false;
-  }
-}
+// ---------------------------------------------------------------------------
+// 扫描 controllers 目录
+// ---------------------------------------------------------------------------
 
-/** 递归扫描 controller 目录，返回所有合法 controller 文件 */
 function discoverControllers(controllersDir: string): ControllerFile[] {
   const results: ControllerFile[] = [];
 
@@ -69,7 +112,6 @@ function discoverControllers(controllersDir: string): ControllerFile[] {
       return;
     }
 
-    // 稳定排序
     entries.sort((a, b) => a.name.localeCompare(b.name));
 
     for (const entry of entries) {
@@ -86,14 +128,23 @@ function discoverControllers(controllersDir: string): ControllerFile[] {
         entry.name.endsWith(".controller.ts") &&
         !entry.name.endsWith(".d.ts")
       ) {
-        // 确认是 Elysia 代码
-        if (!isElysiaFile(fullPath)) continue;
+        // OXc 解析获取实际 export 变量名
+        const exportName = extractExportName(fullPath);
 
-        const baseName = entry.name.replace(/\.controller\.ts$/, "");
-        const variableName = kebabToCamel(baseName) + "Controller";
-        const importPath = `./${relPath.replace(/\.ts$/, ".js")}`;
+        if (!exportName) {
+          pail.warn(`跳过（非 Elysia 导出）：${relPath}`);
+          continue;
+        }
 
-        results.push({ relativePath: relPath, importPath, variableName });
+        // 校验 camelCase
+        if (!isCamelCase(exportName)) {
+          pail.warn(
+            `变量名 "${exportName}" 不是 camelCase（来自 ${relPath}），建议改为驼峰命名`,
+          );
+        }
+
+        const importPath = `./${relPath.replace(/\.ts$/, "")}`;
+        results.push({ relativePath: relPath, importPath, variableName: exportName });
       }
     }
   }
@@ -102,7 +153,7 @@ function discoverControllers(controllersDir: string): ControllerFile[] {
   return results;
 }
 
-/** 处理重名变量：追加父目录前缀消歧 */
+/** 处理重名变量 */
 function disambiguateNames(files: ControllerFile[]): ControllerFile[] {
   const groups = new Map<string, ControllerFile[]>();
 
@@ -133,7 +184,10 @@ function disambiguateNames(files: ControllerFile[]): ControllerFile[] {
   return result.sort((a, b) => a.variableName.localeCompare(b.variableName));
 }
 
-/** 生成 index.ts 源码 */
+// ---------------------------------------------------------------------------
+// 生成 index.ts
+// ---------------------------------------------------------------------------
+
 function generateIndexContent(files: ControllerFile[]): string {
   const lines: string[] = [];
 
@@ -143,7 +197,7 @@ function generateIndexContent(files: ControllerFile[]): string {
   lines.push("");
 
   for (const f of files) {
-    lines.push(`import ${f.variableName} from "${f.importPath}";`);
+    lines.push(`import { ${f.variableName} } from "${f.importPath}";`);
   }
   lines.push("");
 
@@ -168,7 +222,6 @@ function generateIndexContent(files: ControllerFile[]): string {
 // ---------------------------------------------------------------------------
 
 export async function linkCommand(): Promise<void> {
-  // 1. 读配置
   if (!existsSync(CONFIG_PATH)) {
     console.error(
       chalk.red("缺少配置文件 .vscode/api-gen.json，请先执行 api-gen init"),
@@ -201,7 +254,6 @@ export async function linkCommand(): Promise<void> {
     const content = generateIndexContent(disambiguated);
     const outputPath = join(dir, "index.ts");
 
-    // 删掉旧的 index.ts（如有）
     if (existsSync(outputPath)) {
       unlinkSync(outputPath);
     }
