@@ -1,14 +1,7 @@
 import { defineConfig } from "@visulima/packem/config";
-import transformer from "@visulima/packem/transformer/oxc";
-export default defineConfig({
-  entries: [
-    {
-      input: "./src/index.ts",
-      name: "index",
-      executable: true,
-    },
-  ],
+import transformer from "@visulima/packem/transformer/esbuild";
 
+export default defineConfig({
   clean: true,
   runtime: "node",
   validation: false,
