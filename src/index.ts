@@ -3,10 +3,12 @@ import { createCerebro } from "@visulima/cerebro";
 import type { Toolbox } from "@visulima/cerebro";
 import chalk from "@visulima/colorize";
 // 静态导入所有命令
+import barrel from "./commands/barrel.js";
 import generate from "./commands/generate.js";
 import init from "./commands/init.js";
 import link from "./commands/link.js";
 import makePrompt from "./commands/make-prompt.js";
+import raw from "./commands/raw.js";
 import scan from "./commands/scan.js";
 
 const cli = createCerebro("api-gen", {
@@ -75,6 +77,41 @@ cli.addCommand({
   execute: async ({ options }: Toolbox) => {
     await generate(options.output as string);
     console.log(chalk.green("代码生成完成。"));
+  },
+});
+
+cli.addCommand({
+  name: "raw",
+  description: "解析 drizzle schema，自动生成 dto/raw/*.raw.ts 基础字段定义",
+  execute: async () => {
+    await raw();
+    console.log(chalk.green("Raw DTO 文件生成完成。"));
+  },
+});
+
+cli.addCommand({
+  name: "barrel",
+  description: "扫描目录，自动生成级联 index.ts 桶导出（Tree Shaking 友好）",
+  options: [
+    {
+      name: "group",
+      alias: "g",
+      description: "按组名筛选，只处理指定组",
+      type: String,
+    },
+    {
+      name: "dry-run",
+      alias: "d",
+      description: "预览模式，不写入文件",
+      type: Boolean,
+    },
+  ],
+  execute: async ({ options }: Toolbox) => {
+    await barrel({
+      group: options.group as string | undefined,
+      dryRun: options.dryRun as boolean | undefined,
+    });
+    console.log(chalk.green("桶导出生成完成。"));
   },
 });
 

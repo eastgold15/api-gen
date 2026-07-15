@@ -51,7 +51,7 @@ function scanCommonLayer(rootDir: string): CommonLayout | null {
   const relationFiles = getLayerFilePaths(contractRoot, "relation");
   const contractFiles = getLayerFilePaths(contractRoot, "contract");
 
-  const typeboxDir = contractFiles.length ? dirname(contractFiles[0]) : null;
+  const dtoDir = contractFiles.length ? dirname(contractFiles[0]) : null;
   const allTables: string[] = [];
   for (const sf of schemaFiles) allTables.push(...extractTableNames(sf));
   const contractModules = contractFiles.map((f) => basename(f, ".contract.ts")).sort();
@@ -61,7 +61,7 @@ function scanCommonLayer(rootDir: string): CommonLayout | null {
     schemaFiles,
     relationFiles,
     contractFiles,
-    typeboxDir,
+    dtoDir,
     existingSchemas: allTables,
     existingContractModules: contractModules,
   };

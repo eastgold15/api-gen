@@ -210,7 +210,7 @@ export interface ProjectLayout {
   contractDir: string | null;
   schemaPath: string | null;
   relationPath: string | null;
-  typeboxDir: string | null;
+  dtoDir: string | null;
   controllersDir: string | null;
   serverDir: string | null;
   existingSchemas: string[]; // 从*.schema.ts提取的表名

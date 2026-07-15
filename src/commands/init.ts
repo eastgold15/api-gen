@@ -54,7 +54,7 @@ function printLayout(config: ApiGenRootConfig): void {
     commonTable.addRow(["schemaFiles", fmtList(c.schemaFiles.map(f => pathRelativeName(f)))]);
     commonTable.addRow(["relationFiles", fmtList(c.relationFiles.map(f => pathRelativeName(f)))]);
     commonTable.addRow(["contractFiles", fmtList(c.contractFiles.map(f => pathRelativeName(f)))]);
-    commonTable.addRow(["typeboxDir", fmtVal(c.typeboxDir)]);
+    commonTable.addRow(["dtoDir", fmtVal(c.dtoDir)]);
     commonTable.addRow(["existingSchemas", fmtList(c.existingSchemas)]);
     commonTable.addRow(["existingContractModules", fmtList(c.existingContractModules)]);
     console.log(commonTable.toString());

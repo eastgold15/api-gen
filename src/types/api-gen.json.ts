@@ -12,7 +12,7 @@ export interface CommonLayout {
   relationFiles: string[];
   contractFiles: string[];
 
-  typeboxDir: string | null;
+  dtoDir: string | null;
   existingSchemas: string[];
   existingContractModules: string[];
 }
@@ -27,6 +27,23 @@ export interface AppLayout {
   serviceDir: string | null;
 }
 
+// ---------------------------------------------------------------------------
+// 桶导出（barrel）配置
+// ---------------------------------------------------------------------------
+
+/** 单个导出组，如 utils / drizzle / typebox / constants */
+export interface ExportGroup {
+  /** 组名，如 "utils" */
+  name: string;
+  /** 目录路径（相对项目根） */
+  rootDir: string;
+}
+
+/** 桶导出配置 */
+export interface ExportIndexConfig {
+  groups: ExportGroup[];
+}
+
 /** 全局根配置唯一标准 */
 export interface ApiGenRootConfig {
   projectName: string;
@@ -37,4 +54,7 @@ export interface ApiGenRootConfig {
   common: CommonLayout | null;
   apps: AppLayout[];
   ai: AIConfig;
+
+  /** 桶导出（barrel）配置，可选 */
+  exportIndex?: ExportIndexConfig;
 }
