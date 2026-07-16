@@ -307,6 +307,41 @@ function processSubModule(
   };
 }
 
+/** 收集当前目录中 flat .ts 文件的导出，每个文件作为一个独立模块 */
+function collectFlatModules(
+  dirAbs: string,
+): SubModuleInfo[] {
+  const result: SubModuleInfo[] = [];
+  let entries: import("node:fs").Dirent[];
+  try {
+    entries = readdirSync(dirAbs, { withFileTypes: true });
+  } catch {
+    return result;
+  }
+
+  for (const entry of entries) {
+    if (entry.isDirectory()) continue;
+    if (entry.name === "index.ts") continue;
+    if (entry.name.endsWith(".d.ts")) continue;
+    if (entry.name.endsWith(".test.ts")) continue;
+    if (!entry.name.endsWith(".ts")) continue;
+
+    const base = entry.name.replace(/\.ts$/, "");
+    const path = join(dirAbs, entry.name);
+    const exps = extractFileExports(path);
+    if (exps.length === 0) continue;
+
+    result.push({
+      dirName: base,
+      absPath: path,
+      valueExports: exps.filter((e) => e.kind === "value").map((e) => e.name),
+      typeExports: exps.filter((e) => e.kind === "type").map((e) => e.name),
+    });
+  }
+
+  return result;
+}
+
 /** 处理单个组路径（如 packages/contract/src/utils/）→ 先处理子模块，再生成组级 index.ts */
 function processGroup(name: string, rootDir: string, dryRun: boolean): void {
   const groupAbs = resolve(process.cwd(), rootDir);
@@ -331,17 +366,21 @@ function processGroup(name: string, rootDir: string, dryRun: boolean): void {
     .map((e) => e.name)
     .sort();
 
-  // Step 2: 处理子模块 → 生成子 index + 收集导出
+  // Step 2: 收集所有导出（flat 文件 + 子模块）
   let modules: SubModuleInfo[] = [];
 
   if (subDirs.length === 0) {
-    // 无子模块目录：把当前目录当扁平模块处理，直接返回（不生成组级 index）
+    // 纯扁平目录：沿用现有路径，由 processSubModule 生成 index.ts
     const mod = processSubModule(groupAbs, name, dryRun);
     if (mod) {
       console.log(chalk.dim(`  ─ 扁平目录，已在同级生成 index.ts`));
     }
     return;
   }
+
+  // 有子模块：同时处理 flat 文件和子模块，汇总到组级 index
+  const flatModules = collectFlatModules(groupAbs);
+  modules.push(...flatModules);
 
   for (const subDirName of subDirs) {
     const subDirAbs = join(groupAbs, subDirName);
@@ -352,11 +391,11 @@ function processGroup(name: string, rootDir: string, dryRun: boolean): void {
   }
 
   if (modules.length === 0) {
-    pail.warn("所有子模块均为空，跳过组级 index");
+    pail.warn("所有子模块及 flat 文件均为空，跳过组级 index");
     return;
   }
 
-  // Step 3: 生成组级 index.ts（汇总所有子模块的导出）
+  // Step 3: 生成组级 index.ts（汇总 flat 文件 + 子模块的导出）
   const groupContent = genGroupIndex(modules);
   const groupIndexPath = join(groupAbs, "index.ts");
 
@@ -376,7 +415,7 @@ function processGroup(name: string, rootDir: string, dryRun: boolean): void {
     } else {
       writeFileSync(groupIndexPath, groupContent);
       const totalExports = modules.reduce((s, m) => s + m.valueExports.length + m.typeExports.length, 0);
-      console.log(chalk.cyan(`  ─ 组级 index 已生成 (${modules.length} 子模块, ${totalExports} 项导出)`));
+      console.log(chalk.cyan(`  ─ 组级 index 已生成 (${flatModules.length} 文件 + ${subDirs.length} 子模块, ${totalExports} 项导出)`));
     }
   }
 }
