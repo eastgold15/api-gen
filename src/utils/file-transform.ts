@@ -1,6 +1,6 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "@visulima/path";
-import { glob } from "fast-glob";
+import { globSync } from "tinyglobby";
 import { pail } from "@visulima/pail";
 import type { Step } from "../types/api-gen.json.js";
 
@@ -8,7 +8,7 @@ import type { Step } from "../types/api-gen.json.js";
  * 根据 glob 模式匹配文件，返回相对于 cwd 的路径数组
  */
 export function selectFiles(pattern: string): string[] {
-  return glob.sync(pattern, {
+  return globSync(pattern, {
     cwd: process.cwd(),
     dot: true,
     ignore: ["node_modules/**", ".git/**", "dist/**"],
