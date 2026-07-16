@@ -14,6 +14,12 @@ const DEFAULT_CONFIG: ApiConfig = {
   exportIndex: {
     includes: ["utils"],
   },
+  pipelines: [
+    [
+      { type: "select", glob: "**/*.contract.ts" },
+      { type: "prepend", content: "/** biome-ignore-all lint/style/useNamingConvention: 契约文件固定约束 */" },
+    ],
+  ],
 };
 
 // ---------------------------------------------------------------------------

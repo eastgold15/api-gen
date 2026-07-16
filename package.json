@@ -33,6 +33,7 @@
     "@visulima/path": "^3.0.0",
     "@visulima/string": "^3.0.0",
     "@visulima/tabular": "^4.0.0",
+    "fast-glob": "^3.3.3",
     "inquirer": "^14.0.2",
     "oxc-parser": "^0.140.0"
   },

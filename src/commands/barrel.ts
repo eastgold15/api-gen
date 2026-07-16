@@ -4,7 +4,8 @@ import { resolve, join, basename, relative } from "@visulima/path";
 import chalk from "@visulima/colorize";
 import { pail } from "@visulima/pail";
 import { parseTsFile, traverseAst } from "../utils/ast-scanner.js";
-import type { ApiConfig } from "../types/api-config.json.js";
+import { ApiConfig } from "../types/api-gen.json.js";
+
 
 // ---------------------------------------------------------------------------
 // 类型

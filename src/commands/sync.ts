@@ -1,6 +1,7 @@
 import { existsSync, readdirSync } from "node:fs";
 import { readFileSync, writeFileSync, ensureDirSync } from "@visulima/fs";
 import { resolve, join, dirname, relative } from "@visulima/path";
+import { runPipeline } from "../utils/file-transform.js";
 import chalk from "@visulima/colorize";
 import { pail } from "@visulima/pail";
 import type { ApiConfig, ExportIndexConfig } from "../types/api-gen.json.js";
@@ -71,6 +72,15 @@ export async function syncCommand(): Promise<void> {
   const raw = readFileSync(configPath, { encoding: "utf-8" });
   const config = JSON.parse(raw) as ApiConfig;
 
+  // 执行管道工作流
+  if (config.pipelines?.length) {
+    pail.info(`发现 ${config.pipelines.length} 条管道，开始执行...`);
+    for (let i = 0; i < config.pipelines.length; i++) {
+      pail.info(`管道 [${i + 1}/${config.pipelines.length}]`);
+      runPipeline(config.pipelines[i]);
+    }
+  }
+
   const current = config.exportIndex;
   if (!current?.includes?.length) {
     pail.warn("exportIndex 未配置 includes，请在 api-config.json 中添加后再试");
@@ -122,7 +132,7 @@ export async function syncCommand(): Promise<void> {
 
   config.exportIndex = updated;
   ensureDirSync(dirname(configPath));
-  writeFileSync(configPath, JSON.stringify(config, null, 2), "utf-8");
+  writeFileSync(configPath, JSON.stringify(config, null, 2));
 
   pail.success(`exportIndex 已更新至 ${configPath}`);
 }
