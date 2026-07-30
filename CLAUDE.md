@@ -38,7 +38,7 @@ bun run type-check                # tsc --noEmit 类型检查
 
 业务文件固定格式 `{模块名}.{分层}.ts`，分层标识：`controller` / `service` / `schema` / `relation` / `contract`。定义在 `src/utils/tree-builder.ts` 的 `LAYERS`。
 
-> 注意：`readme.md` 是早期设计文档，其中 `server` 层已在实现中改名为 `service`；以 `tree-builder.ts` 的 `LAYERS` 为准。
+> 注意：架构/设计规范见 `docs/architecture.md`，其中 `server` 层已在实现中改名为 `service`；以 `tree-builder.ts` 的 `LAYERS` 为准。`readme.md` 是面向用户的 CLI 使用说明。
 
 目录结构探测（`src/structure/detector.ts`）：有 `apps/` 或 `packages/` 判定为 monorepo，公共合约层固定在 `packages/contract`，每个 app 的后端根目录在 `src/` 或 `server/`（优先 `server/`）。
 
