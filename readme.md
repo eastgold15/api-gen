@@ -65,6 +65,7 @@ Monorepo 下公共合约层固定在 `packages/contract`，应用在 `apps/*`。
 
 - [架构与 AST 分层扫描规范](./docs/architecture.md) — 设计原理、OXc 解析配置、各分层提取标准
 - [桶导出说明](./docs/barrel-export.md)
+- [测试规范](./docs/testing.md) — 两种测试模式、`.test-tmp` 隔离约定、新增功能的测试要求
 
 ## License
 

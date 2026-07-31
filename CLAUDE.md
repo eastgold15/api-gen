@@ -18,7 +18,7 @@ bun run type-check                # tsc --noEmit 类型检查
 
 - 运行时用 **bun**（本仓库是 Bun 项目，tsconfig `types: ["bun-types"]`，测试用 `bun:test`）。
 - 打包器是 **packem**（esbuild transformer，配置见 `packem.config.ts`），产物为单文件 `dist/index.mjs`，作为 `bin.api-gen` 入口。
-- 测试通过复制 `fixtures/`（`single-app`、`monorepo`）到 `.test-tmp/`，`process.chdir` 后带 `?cb=` 查询串重新 `import` 命令模块执行——因为命令模块在顶层读取 `process.cwd()`，必须绕过模块缓存。
+- 测试通过复制 `fixtures/`（`single-app`、`monorepo`）到 `.test-tmp/`，`process.chdir` 后带 `?cb=` 查询串重新 `import` 命令模块执行——因为命令模块在顶层读取 `process.cwd()`，必须绕过模块缓存。完整测试约定（两种模式、隔离规则、新增功能的测试要求）见 `docs/testing.md`。
 
 ## 两套配置文件（关键区分）
 
