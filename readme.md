@@ -38,6 +38,7 @@ api-gen generate      # 6.（可选）直接调用 AI 生成 schema / contract �
 | `barrel` | 扫描目录生成级联 `index.ts` 桶导出，Tree Shaking 友好（`-g` 指定组、`-d` 预览） |
 | `link` | 生成 `controllers/index.ts`，聚合导出 `applyAllControllers()` |
 | `raw` | 解析 drizzle schema，生成 `dto/raw/*.raw.ts` 基础字段定义 |
+| `archive` | 把项目目录打包成 `.tar.gz` 用于服务器部署（`-o` 输出目录、`--prefix` 文件名前缀、`--dry-run` 仅扫描） |
 
 ## 配置文件
 

@@ -3,6 +3,7 @@ import { createCerebro } from "@visulima/cerebro";
 import type { Toolbox } from "@visulima/cerebro";
 import chalk from "@visulima/colorize";
 // 静态导入所有命令
+import archive from "./commands/archive.js";
 import barrel from "./commands/barrel.js";
 import generate from "./commands/generate.js";
 import info from "./commands/info.js";
@@ -140,6 +141,36 @@ cli.addCommand({
   execute: async () => {
     await link();
     console.log(chalk.green("控制器链接完成。"));
+  },
+});
+
+cli.addCommand({
+  name: "archive",
+  description: "把项目目录打包成 .tar.gz 用于服务器部署（基于 .gitignore 风格过滤）",
+  options: [
+    {
+      name: "output-dir",
+      alias: "o",
+      description: "归档输出目录，默认项目根",
+      type: String,
+    },
+    {
+      name: "prefix",
+      description: "归档文件名前缀，默认 project",
+      type: String,
+    },
+    {
+      name: "dry-run",
+      description: "只扫描不写文件",
+      type: Boolean,
+    },
+  ],
+  execute: async ({ options }: Toolbox) => {
+    await archive({
+      outputDir: options.outputDir as string | undefined,
+      prefix: options.prefix as string | undefined,
+      dryRun: options.dryRun as boolean | undefined,
+    });
   },
 });
 

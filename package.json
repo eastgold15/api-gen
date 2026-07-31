@@ -35,6 +35,7 @@
     "@visulima/tabular": "^4.0.0",
     "inquirer": "^14.0.2",
     "oxc-parser": "^0.140.0",
+    "tar": "^7.5.22",
     "tinyglobby": "^0.2.17"
   },
   "devDependencies": {
