@@ -157,7 +157,7 @@ describe("single-app 完整流程", () => {
     expect(utilsIndex).toContain("./sort");
   });
 
-  it("路径形式组：sync 把组名作为唯一项填入（barrel 自行扫描组名下内容）", async () => {
+  it("路径形式组：sync 把子内容列表填入（子目录 + 散文件）", async () => {
     // 模拟 packages/logixlysia/src 目录：含子目录 + 散文件 + 孙子级（验证不递归）
     const targetDir = join(root, "packages/logixlysia/src");
     mkdirSync(join(targetDir, "utils"), { recursive: true });
@@ -179,8 +179,13 @@ describe("single-app 完整流程", () => {
 
     const updated = JSON.parse(readFileSync(configPath, "utf-8"));
     const group = updated.exportIndex["packages/logixlysia/src"];
-    // 路径形式组：sync 只填组名本身，barrel 以组名作为 rootDir 自扫
-    expect(group).toEqual(["packages/logixlysia/src"]);
+    // 路径形式组：sync 填组名下的子内容（子目录 + 散文件）
+    expect(group).toContain("packages/logixlysia/src/utils");
+    expect(group).toContain("packages/logixlysia/src/hooks");
+    expect(group).toContain("packages/logixlysia/src/foo.ts");
+    expect(group).toContain("packages/logixlysia/src/bar.ts");
+    // 孙子级不应被加入
+    expect(group).not.toContain("packages/logixlysia/src/utils/nested");
   });
 
   it("路径形式组：barrel 以组名作为 rootDir 跑出 src/index.ts 包含散文件 + 子目录索引", async () => {

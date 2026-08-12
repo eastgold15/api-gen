@@ -8,12 +8,12 @@
 
 ## 两类组：约定名组 vs 路径形式组
 
-`exportIndex.includes` 里的项分两种，sync 处理方式不同：
+`exportIndex.includes` 里的项分两种，sync 填充方式不同：
 
 | 类型 | 形态 | 例 |
 |------|------|----|
 | **约定名组** | 单个单词（`utils` / `hooks`） | `"utils": ["src/utils", "packages/contract/src/utils"]` |
-| **路径形式组** | 含 `/` 或以 `.` 开头 | `"packages/logixlysia/src": ["packages/logixlysia/src"]` |
+| **路径形式组** | 含 `/` 或以 `.` 开头 | `"packages/logixlysia/src": ["packages/logixlysia/src/utils", "packages/logixlysia/src/foo.ts", ...]` |
 
 判断函数（实现细节）：
 
@@ -51,48 +51,64 @@ sync 会**全项目递归**扫所有目录，把名字命中白名单的目录�
 
 **典型场景**：单仓 / monorepo 中多处 `utils` 目录想一起导出。
 
+barrel 处理约定名组时，**每个数组项作为独立 rootDir**——每个路径各自生成组级 `index.ts`（位置在 `src/utils/index.ts`、`packages/contract/src/utils/index.ts` 等）。
+
 ## 路径形式组
 
-组名直接是路径（一般是 CLI 库的 `src/` 根目录），sync 把**组名本身**作为唯一项填入：
+组名直接是路径（一般是 CLI 库的 `src/` 根目录），sync 把**组名下的一级子内容**（子目录 + 散 `.ts` 文件）填进数组：
 
 ```jsonc
 {
   "exportIndex": {
     "includes": ["packages/logixlysia/src"],
     "packages/logixlysia/src": [
-      "packages/logixlysia/src"  // ← sync 填入的
+      "packages/logixlysia/src/utils",       // 子目录
+      "packages/logixlysia/src/hooks",       // 子目录
+      "packages/logixlysia/src/foo.ts",      // 散文件
+      "packages/logixlysia/src/bar.ts"       // 散文件
     ]
   }
 }
 ```
 
-然后 `barrel` 跑时以这个组名作为 `rootDir` 扫描其下一级内容：
+**数组里能看到所有要处理的内容**——方便审计、找错。
 
-- 一级**子目录**（`utils/`、`hooks/`）→ 各自生成 `index.ts`
-- **散 `.ts` 文件**（`foo.ts`、`bar.ts`）→ 直接 re-export
-- 父级 `src/index.ts` 汇总所有子目录 + 散文件
-- **不递归**到孙子级（孙级由孙级自己的 barrel 处理）
+barrel 处理路径形式组时：
+- 以**组名作为唯一 rootDir**（`packages/logixlysia/src`）
+- 对数组里**每一项**用 `statSync` 自识别是文件还是目录：
+  - **文件**（`.ts`）→ 直接 AST 提取导出，不写 `index.ts`
+  - **目录** → 当作子模块处理，生成该子目录的 `index.ts`
+- 所有项汇总到 `src/index.ts`（组级）
 
-sync 在日志里会把组下的子内容**列出来**（仅打印，不写进 config）：
+sync 跑完日志示例：
 
 ```
-✓ packages/logixlysia/src: 路径有效，将作为根目录处理（4 个子项）
+✓ packages/logixlysia/src: 填充 4 个子项
   - packages/logixlysia/src/bar.ts
   - packages/logixlysia/src/foo.ts
   - packages/logixlysia/src/hooks
   - packages/logixlysia/src/utils
 ```
 
-**典型场景**：CLI 库（如 `logixlysia`）的 `src/` 根目录希望每个子模块都集中导出，同时 `src/index.ts` 作为对外总入口。
+barrel 跑完生成：
+
+```
+src/index.ts                  ← 父级汇总：散文件 re-export + 子目录转发
+src/utils/index.ts            ← 子模块 barrel（paginate 等）
+src/hooks/index.ts            ← 子模块 barrel（useFoo 等）
+```
+
+**典型场景**：CLI 库（如 `logixlysia`）的 `src/` 根目录希望每个子模块都集中导出 + 散文件直接 re-export + `src/index.ts` 作为对外总入口。
 
 ### 与约定名组的关键区别
 
 | 维度 | 约定名组 | 路径形式组 |
 |------|---------|-----------|
-| 数组里能填几个 | 多个（每处匹配目录一个） | 只有一个 = 组名本身 |
-| sync 填的依据 | 全项目扫名字匹配 | 检查路径是否存在 |
-| barrel 处理 | 每个数组项**独立**生成组级 `index.ts` | 以**组名**作为唯一 rootDir |
+| 数组里能填几个 | 多个（每处匹配目录一个） | 一个组名下的所有子内容（子目录 + 散文件） |
+| sync 填的依据 | 全项目扫名字匹配 | 扫组名路径下一级内容 |
+| barrel 处理 | 每个数组项**独立**生成组级 `index.ts` | 以**组名**作为唯一 rootDir，数组项识别后汇总到组级 |
 | 多仓可重复 | ✅（每 app 一个 utils 各填一项） | ❌（路径就是身份，一处一个） |
+| 散文件支持 | ❌（约定名组是目录白名单） | ✅（自动 re-export） |
 
 ## 失效路径清理
 
@@ -117,9 +133,9 @@ utils: 保留 1 个路径，移除 1 个失效路径
 |------|----------|
 | `includes` 空 | 跳过整个 sync（warn） |
 | 约定名组空数组 | 用全项目扫描结果填充；扫不到则保持空 |
-| 路径形式组空数组 | 检查路径是否存在，存在则填 `[组名]`，不存在则 warn + 保持空 |
+| 路径形式组空数组 | 扫组名路径下一级内容填入 |
 | 路径形式组路径不存在 | warn + 数组保持空（不报错） |
-| 路径形式组路径下无任何内容 | 填 `[组名]`，barrel 跑出空 index.ts |
+| 路径形式组路径下无任何内容 | 数组保持空 |
 
 ## 与 barrel 的关系
 

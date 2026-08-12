@@ -124,14 +124,14 @@ export async function syncCommand(): Promise<void> {
       updated[name] = validPaths;
       console.log(chalk.dim(`  ${name}: 保留 ${validPaths.length} 个路径${validPaths.length < existingPaths.length ? chalk.yellow(`，移除 ${existingPaths.length - validPaths.length} 个失效路径`) : ""}`));
     } else if (isPathLike(name)) {
-      // 路径形式组：组名 = 路径，把组名作为唯一项填入。
-      // barrel 处理时以组名作为 rootDir 扫描其下子目录 + 散文件，无需在此处展开。
+      // 路径形式组：组名 = 路径，sync 填组名下的子目录 + 散 .ts 文件列表。
+      // barrel 接到列表后自识别每项是文件还是目录，统一汇总到组级 index.ts。
       const abs = resolve(cwd, name);
       if (existsSync(abs)) {
         const children = scanPathGroup(abs, name);
-        updated[name] = [name];
+        updated[name] = children;
         changed = true;
-        console.log(chalk.green(`  ✓ ${name}: 路径有效，将作为根目录处理（${children.length} 个子项）`));
+        console.log(chalk.green(`  ✓ ${name}: 填充 ${children.length} 个子项`));
         for (const c of children) {
           console.log(chalk.dim(`    - ${c}`));
         }

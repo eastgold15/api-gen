@@ -1,4 +1,4 @@
-import { existsSync, readdirSync } from "node:fs";
+import { existsSync, readdirSync, statSync } from "node:fs";
 import { readFileSync, writeFileSync } from "@visulima/fs";
 import { resolve, join, basename, relative } from "@visulima/path";
 import chalk from "@visulima/colorize";
@@ -33,6 +33,11 @@ const SKIP_DIRS = new Set([
   "node_modules", "dist", ".vscode", ".git", "scripts",
   ".next", ".agengt", ".claude", ".lingma", "turbo",
 ]);
+
+/** 判断组名是否为路径形式（含 / 或以 . 开头），区别于约定名组（utils/hooks 等） */
+function isPathLike(s: string): boolean {
+  return s.includes("/") || s.includes("\\") || s.startsWith(".");
+}
 
 // ---------------------------------------------------------------------------
 // AST 辅助
@@ -434,6 +439,110 @@ function processGroup(name: string, rootDir: string, dryRun: boolean, excludedRa
   }
 }
 
+/** 单个路径项：识别是文件还是目录，文件直接提取 exports，目录走 processSubModule */
+function processItemAsModule(
+  itemAbs: string,
+  dryRun: boolean,
+): SubModuleInfo | null {
+  let st: import("node:fs").Stats;
+  try { st = statSync(itemAbs); } catch { return null; }
+
+  if (st.isFile()) {
+    // 散 .ts 文件：直接 AST 提取，不写 index.ts
+    const base = basename(itemAbs);
+    if (!base.endsWith(".ts")) return null;
+    if (base.endsWith(".d.ts") || base.endsWith(".test.ts") || base === "index.ts") return null;
+    const exps = extractFileExports(itemAbs);
+    if (exps.length === 0) return null;
+    return {
+      dirName: base.replace(/\.ts$/, ""),
+      absPath: itemAbs,
+      valueExports: exps.filter((e) => e.kind === "value").map((e) => e.name),
+      typeExports: exps.filter((e) => e.kind === "type").map((e) => e.name),
+    };
+  }
+
+  if (st.isDirectory()) {
+    // 子目录：复用 processSubModule（生成该子目录的 index.ts 并返回 SubModuleInfo）
+    return processSubModule(itemAbs, basename(itemAbs), dryRun);
+  }
+
+  return null;
+}
+
+/** 处理路径形式组：以组名路径为 groupAbs，对 included 数组每项自识别文件/目录，统一汇总 */
+function processPathGroup(
+  name: string,
+  included: string[],
+  dryRun: boolean,
+  excludedRaw: string[] = [],
+): void {
+  const groupAbs = resolve(process.cwd(), name);
+
+  if (!existsSync(groupAbs)) {
+    pail.warn(`目录不存在，跳过：${chalk.dim(name)}`);
+    return;
+  }
+
+  // 计算 groupAbs 下被排除的子项 basename（基于绝对路径前缀匹配）
+  const groupAbsNorm = groupAbs.replace(/[\\/]+$/, "");
+  const excludedNames = new Set<string>();
+  for (const raw of excludedRaw) {
+    if (!raw.startsWith("!")) continue;
+    const rel = raw.slice(1);
+    const absP = resolve(process.cwd(), rel);
+    if (absP.startsWith(groupAbsNorm + "/") || absP.startsWith(groupAbsNorm + "\\")) {
+      const tail = absP.slice(groupAbsNorm.length + 1);
+      const firstSeg = tail.split(/[\\/]/)[0];
+      if (firstSeg) excludedNames.add(firstSeg);
+    }
+  }
+
+  console.log(chalk.bold(`\n📦 ${name}  (${included.length} 个子项)`));
+
+  const modules: SubModuleInfo[] = [];
+  for (const item of included) {
+    const baseName = basename(item);
+    if (excludedNames.has(baseName)) {
+      pail.info(`已排除（配置忽略）：${chalk.dim(item)}`);
+      continue;
+    }
+    const itemAbs = resolve(process.cwd(), item);
+    const mod = processItemAsModule(itemAbs, dryRun);
+    if (mod) {
+      modules.push(mod);
+    }
+  }
+
+  if (modules.length === 0) {
+    pail.warn("所有子项均为空，跳过组级 index");
+    return;
+  }
+
+  // 生成组级 index.ts（汇总所有子项）
+  const groupContent = genGroupIndex(modules);
+  const groupIndexPath = join(groupAbs, "index.ts");
+
+  if (existsSync(groupIndexPath) && !hasAutoGenMarker(groupIndexPath)) {
+    pail.warn(`跳过组级 index（手动维护）：${chalk.dim(relative(process.cwd(), groupIndexPath))}`);
+    return;
+  }
+
+  if (dryRun) {
+    console.log(chalk.dim(`  ~ ${relative(process.cwd(), groupIndexPath)}`));
+    console.log(chalk.dim(groupContent.split("\n").slice(0, 4).map((l) => `    ${l}`).join("\n")));
+    console.log(chalk.dim(`    ... (${modules.length} 项, aggregated)`));
+  } else {
+    if (!shouldWrite(groupIndexPath, groupContent)) {
+      pail.debug(`无变更：${chalk.dim(relative(process.cwd(), groupIndexPath))}`);
+    } else {
+      writeFileSync(groupIndexPath, groupContent);
+      const totalExports = modules.reduce((s, m) => s + m.valueExports.length + m.typeExports.length, 0);
+      console.log(chalk.cyan(`  ─ 组级 index 已生成 (${modules.length} 项, ${totalExports} 项导出)`));
+    }
+  }
+}
+
 // ---------------------------------------------------------------------------
 // 主入口
 // ---------------------------------------------------------------------------
@@ -497,9 +606,16 @@ export async function barrelCommand(options: BarrelOptions = {}): Promise<void> 
       continue;
     }
 
-    for (const rootDir of included) {
-      processGroup(name, rootDir, !!options.dryRun, excluded);
-      totalPaths++;
+    if (isPathLike(name)) {
+      // 路径形式组：included 是组名下的子内容列表（子目录 + 散文件），
+      // 一次性处理整组，汇总到组级 index.ts。
+      processPathGroup(name, included, !!options.dryRun, excluded);
+      totalPaths += included.length;
+    } else {
+      for (const rootDir of included) {
+        processGroup(name, rootDir, !!options.dryRun, excluded);
+        totalPaths++;
+      }
     }
   }
 
