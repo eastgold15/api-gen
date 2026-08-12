@@ -343,12 +343,26 @@ function collectFlatModules(
 }
 
 /** 处理单个组路径（如 packages/contract/src/utils/）→ 先处理子模块，再生成组级 index.ts */
-function processGroup(name: string, rootDir: string, dryRun: boolean): void {
+function processGroup(name: string, rootDir: string, dryRun: boolean, excludedRaw: string[] = []): void {
   const groupAbs = resolve(process.cwd(), rootDir);
 
   if (!existsSync(groupAbs)) {
     pail.warn(`目录不存在，跳过：${chalk.dim(rootDir)}`);
     return;
+  }
+
+  // 计算 groupAbs 下被排除的子目录 basename（基于绝对路径前缀匹配）
+  const groupAbsNorm = groupAbs.replace(/[\\/]+$/, "");
+  const excludedSubDirNames = new Set<string>();
+  for (const raw of excludedRaw) {
+    if (!raw.startsWith("!")) continue;
+    const rel = raw.slice(1);
+    const absP = resolve(process.cwd(), rel);
+    if (absP.startsWith(groupAbsNorm + "/") || absP.startsWith(groupAbsNorm + "\\")) {
+      const tail = absP.slice(groupAbsNorm.length + 1);
+      const firstSeg = tail.split(/[\\/]/)[0];
+      if (firstSeg) excludedSubDirNames.add(firstSeg);
+    }
   }
 
   console.log(chalk.bold(`\n📦 ${name}  (${rootDir})`));
@@ -362,7 +376,7 @@ function processGroup(name: string, rootDir: string, dryRun: boolean): void {
   }
 
   const subDirs = entries
-    .filter((e) => e.isDirectory() && !SKIP_DIRS.has(e.name))
+    .filter((e) => e.isDirectory() && !SKIP_DIRS.has(e.name) && !excludedSubDirNames.has(e.name))
     .map((e) => e.name)
     .sort();
 
@@ -464,13 +478,27 @@ export async function barrelCommand(options: BarrelOptions = {}): Promise<void> 
 
   let totalPaths = 0;
   for (const name of groupNames) {
-    const paths = ei[name];
-    if (!paths || paths.length === 0) {
+    const rawPaths = ei[name];
+    if (!rawPaths || rawPaths.length === 0) {
       pail.warn(`"${name}" 未配置路径，跳过。请编辑 exportIndex.${name} 添加路径`);
       continue;
     }
-    for (const rootDir of paths) {
-      processGroup(name, rootDir, !!options.dryRun);
+
+    // 拆分包含项与排除项：以 "!" 开头的视为排除
+    const included = rawPaths.filter((p) => !p.startsWith("!"));
+    const excluded = rawPaths.filter((p) => p.startsWith("!"));
+
+    for (const p of excluded) {
+      pail.info(`已排除（配置忽略）：${chalk.dim(p.slice(1))}`);
+    }
+
+    if (included.length === 0) {
+      pail.warn(`"${name}" 所有路径都被排除（!），跳过组`);
+      continue;
+    }
+
+    for (const rootDir of included) {
+      processGroup(name, rootDir, !!options.dryRun, excluded);
       totalPaths++;
     }
   }

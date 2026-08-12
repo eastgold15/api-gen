@@ -132,6 +132,30 @@ describe("single-app 完整流程", () => {
     expect(hooks).toContain('from "./use-foo"');
     expect(hooks).not.toContain('from "./hooks"');
   });
+
+  it("! 前缀排除路径：被排除的子目录不生成 index.ts，父级 index 也不引用", async () => {
+    // 新建一个要被排除的子目录
+    mkdirSync(join(root, "src/utils/_internal"), { recursive: true });
+    writeFileSync(join(root, "src/utils/_internal/secret.ts"), "export const secret = 1;");
+
+    // 在 utils 组里追加 ! 排除项
+    const cfg = JSON.parse(readFileSync(configPath, "utf-8"));
+    const utilsPath = cfg.exportIndex.utils[0];
+    cfg.exportIndex.utils = [utilsPath, `!${utilsPath}/_internal`];
+    writeFileSync(configPath, JSON.stringify(cfg, null, 2), "utf-8");
+
+    await runCmd(root, "../commands/barrel.js", "barrelCommand");
+
+    // 被排除的子目录不应生成 index.ts
+    expect(existsSync(join(root, "src/utils/_internal/index.ts"))).toBe(false);
+
+    // 父级 src/utils/index.ts 不应包含被排除的子目录
+    const utilsIndex = readFileSync(join(root, "src/utils/index.ts"), "utf-8");
+    expect(utilsIndex).not.toContain("./_internal");
+    // 父级仍应包含未排除的子目录（确认只排除指定项，不影响其他）
+    expect(utilsIndex).toContain("./pagination");
+    expect(utilsIndex).toContain("./sort");
+  });
 });
 
 // ---------------------------------------------------------------------------

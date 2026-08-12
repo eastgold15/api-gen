@@ -107,6 +107,33 @@ api-gen barrel --group utils
 api-gen barrel --dry-run
 ```
 
+### 排除路径（`!` 前缀）
+
+在某个组的路径数组里以 `!` 开头的项会被**忽略**：
+
+```json
+{
+  "exportIndex": {
+    "includes": ["utils"],
+    "utils": [
+      "packages/contract/src/utils",
+      "!packages/contract/src/utils/internal"
+    ]
+  }
+}
+```
+
+- `packages/contract/src/utils` 正常扫描
+- `packages/contract/src/utils/internal` 被排除（不进入子目录扫描，不生成 `index.ts`，父级 barrel 也不引用它）
+- 运行 barrel 时会在日志里提示 `已排除（配置忽略）：packages/contract/src/utils/internal`
+
+**典型场景：**
+
+- 内部实现细节目录不希望对外导出（`internal/`、`__tests__/`）
+- 临时调试 / 实验目录暂时不让进 barrel
+
+如果整组路径全是 `!` 项（比如 `utils: ["!foo"]`），barrel 会打印警告并跳过该组，不报错。
+
 ### 3. 工作流
 
 1. 在 `pagination/page.ts` 中新增/删除/修改导出
