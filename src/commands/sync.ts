@@ -1,6 +1,6 @@
 import { existsSync, readdirSync } from "node:fs";
 import { readFileSync, writeFileSync, ensureDirSync } from "@visulima/fs";
-import { resolve, join, dirname, relative } from "@visulima/path";
+import { resolve, join, dirname } from "@visulima/path";
 import { runPipeline } from "../utils/file-transform.js";
 import chalk from "@visulima/colorize";
 import { pail } from "@visulima/pail";
@@ -24,6 +24,30 @@ const BARREL_TARGETS = new Set([
 // ---------------------------------------------------------------------------
 // 目录扫描
 // ---------------------------------------------------------------------------
+
+/** 判断组名是否为路径形式（含 / 或以 . 开头），区别于约定名组（utils/hooks 等） */
+function isPathLike(s: string): boolean {
+  return s.includes("/") || s.includes("\\") || s.startsWith(".");
+}
+
+/** 扫一个路径形式组：返回它下面的一级子目录 + 散 .ts 文件 */
+function scanPathGroup(absPath: string, relPath: string): string[] {
+  if (!existsSync(absPath)) return [];
+  let entries: import("node:fs").Dirent[];
+  try { entries = readdirSync(absPath, { withFileTypes: true }); } catch { return []; }
+
+  const paths: string[] = [];
+  for (const e of entries) {
+    if (SKIP_DIRS.has(e.name)) continue;
+    if (e.name === "index.ts" || e.name.endsWith(".d.ts") || e.name.endsWith(".test.ts")) continue;
+    if (e.isDirectory()) {
+      paths.push(join(relPath, e.name));
+    } else if (e.isFile() && e.name.endsWith(".ts")) {
+      paths.push(join(relPath, e.name));
+    }
+  }
+  return paths.sort();
+}
 
 function collectDirs(
   dir: string,
@@ -99,8 +123,24 @@ export async function syncCommand(): Promise<void> {
       if (validPaths.length !== existingPaths.length) changed = true;
       updated[name] = validPaths;
       console.log(chalk.dim(`  ${name}: 保留 ${validPaths.length} 个路径${validPaths.length < existingPaths.length ? chalk.yellow(`，移除 ${existingPaths.length - validPaths.length} 个失效路径`) : ""}`));
+    } else if (isPathLike(name)) {
+      // 路径形式组：组名 = 路径，把组名作为唯一项填入。
+      // barrel 处理时以组名作为 rootDir 扫描其下子目录 + 散文件，无需在此处展开。
+      const abs = resolve(cwd, name);
+      if (existsSync(abs)) {
+        const children = scanPathGroup(abs, name);
+        updated[name] = [name];
+        changed = true;
+        console.log(chalk.green(`  ✓ ${name}: 路径有效，将作为根目录处理（${children.length} 个子项）`));
+        for (const c of children) {
+          console.log(chalk.dim(`    - ${c}`));
+        }
+      } else {
+        updated[name] = [];
+        console.log(chalk.yellow(`  - ${name}: 路径不存在 ${name}`));
+      }
     } else if (scanned[name]?.length) {
-      // 空路径 → 用扫描结果填充
+      // 约定名组：空路径 → 用扫描结果填充
       updated[name] = scanned[name];
       changed = true;
       console.log(chalk.green(`  ✓ ${name}: 填充 ${scanned[name].length} 个路径`));

@@ -156,6 +156,61 @@ describe("single-app 完整流程", () => {
     expect(utilsIndex).toContain("./pagination");
     expect(utilsIndex).toContain("./sort");
   });
+
+  it("路径形式组：sync 把组名作为唯一项填入（barrel 自行扫描组名下内容）", async () => {
+    // 模拟 packages/logixlysia/src 目录：含子目录 + 散文件 + 孙子级（验证不递归）
+    const targetDir = join(root, "packages/logixlysia/src");
+    mkdirSync(join(targetDir, "utils"), { recursive: true });
+    mkdirSync(join(targetDir, "hooks"), { recursive: true });
+    mkdirSync(join(targetDir, "utils/nested"), { recursive: true }); // 孙子级（应被忽略）
+    writeFileSync(join(targetDir, "utils/page.ts"), "export const paginate = 1;");
+    writeFileSync(join(targetDir, "utils/nested/deep.ts"), "export const deep = 1;");
+    writeFileSync(join(targetDir, "hooks/use-foo.ts"), "export const useFoo = 1;");
+    writeFileSync(join(targetDir, "foo.ts"), "export const foo = 1;");
+    writeFileSync(join(targetDir, "bar.ts"), "export const bar = 1;");
+
+    // 把路径形式组加到 includes
+    const cfg = JSON.parse(readFileSync(configPath, "utf-8"));
+    cfg.exportIndex.includes = ["utils", "packages/logixlysia/src"];
+    cfg.exportIndex["packages/logixlysia/src"] = [];
+    writeFileSync(configPath, JSON.stringify(cfg, null, 2), "utf-8");
+
+    await runCmd(root, "../commands/sync.js", "syncCommand");
+
+    const updated = JSON.parse(readFileSync(configPath, "utf-8"));
+    const group = updated.exportIndex["packages/logixlysia/src"];
+    // 路径形式组：sync 只填组名本身，barrel 以组名作为 rootDir 自扫
+    expect(group).toEqual(["packages/logixlysia/src"]);
+  });
+
+  it("路径形式组：barrel 以组名作为 rootDir 跑出 src/index.ts 包含散文件 + 子目录索引", async () => {
+    await runCmd(root, "../commands/barrel.js", "barrelCommand");
+
+    const srcIndex = join(root, "packages/logixlysia/src/index.ts");
+    expect(existsSync(srcIndex)).toBe(true);
+    const content = readFileSync(srcIndex, "utf-8");
+
+    // 应包含散文件
+    expect(content).toContain('from "./foo"');
+    expect(content).toContain('from "./bar"');
+
+    // 应包含子目录（转发自子目录的 index.ts）
+    expect(content).toContain('from "./utils"');
+    expect(content).toContain('from "./hooks"');
+
+    // 不应递归到孙子级
+    expect(content).not.toContain("./utils/nested");
+
+    // 子目录的 index.ts 应已生成
+    expect(existsSync(join(root, "packages/logixlysia/src/utils/index.ts"))).toBe(true);
+    expect(existsSync(join(root, "packages/logixlysia/src/hooks/index.ts"))).toBe(true);
+
+    // 子目录 index 应包含自己的叶子
+    const utilsIndex = readFileSync(join(root, "packages/logixlysia/src/utils/index.ts"), "utf-8");
+    expect(utilsIndex).toContain("paginate");
+    // 子目录 index 不应包含孙子级 deep（barrel 只扫一级）
+    expect(utilsIndex).not.toContain("./nested");
+  });
 });
 
 // ---------------------------------------------------------------------------
