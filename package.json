@@ -28,7 +28,7 @@
     "@visulima/error": "^6.0.0",
     "@visulima/find-cache-dir": "^3.0.0",
     "@visulima/fmt": "^2.0.0",
-    "@visulima/fs": "^5.0.1",
+    "@visulima/fs": "^6.0.0",
     "@visulima/pail": "^4.0.0",
     "@visulima/path": "^3.0.0",
     "@visulima/string": "^3.0.0",
