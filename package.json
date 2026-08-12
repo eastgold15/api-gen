@@ -30,7 +30,7 @@
     "@visulima/fmt": "^2.0.0",
     "@visulima/fs": "^5.0.1",
     "@visulima/pail": "^4.0.0",
-    "@visulima/path": "^3.0.0",
+    "@visulima/path": "^4.0.0",
     "@visulima/string": "^3.0.0",
     "@visulima/tabular": "^4.0.0",
     "inquirer": "^14.0.2",
