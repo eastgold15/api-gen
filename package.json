@@ -22,7 +22,7 @@
     ".": "./dist/index.mjs"
   },
   "dependencies": {
-    "@visulima/boxen": "^3.0.0",
+    "@visulima/boxen": "^4.0.0",
     "@visulima/cerebro": "^3.0.0",
     "@visulima/colorize": "^2.0.0",
     "@visulima/error": "^6.0.0",
