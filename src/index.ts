@@ -125,11 +125,17 @@ cli.addCommand({
       description: "预览模式，不写入文件",
       type: Boolean,
     },
+    {
+      name: "lib",
+      description: "库导出模式:仅导出 @public 标记的符号(@internal / 未标注均不导出)",
+      type: Boolean,
+    },
   ],
   execute: async ({ options }: Toolbox) => {
     await barrel({
       group: options.group as string | undefined,
       dryRun: options.dryRun as boolean | undefined,
+      lib: options.lib as boolean | undefined,
     });
     console.log(chalk.green("桶导出生成完成。"));
   },

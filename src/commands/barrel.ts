@@ -1,9 +1,11 @@
 import { existsSync, readdirSync, statSync } from "node:fs";
+import { dirname } from "node:path";
 import { readFileSync, writeFileSync } from "@visulima/fs";
 import { resolve, join, basename, relative } from "@visulima/path";
 import chalk from "@visulima/colorize";
 import { pail } from "@visulima/pail";
 import { parseTsFile, traverseAst } from "../utils/ast-scanner.js";
+import { findPrecedingJsDoc, parseJsDocTags } from "../utils/jsdoc-tags.js";
 import { ApiConfig } from "../types/api-gen.json.js";
 
 
@@ -11,16 +13,31 @@ import { ApiConfig } from "../types/api-gen.json.js";
 // 类型
 // ---------------------------------------------------------------------------
 
-interface NamedExport {
+/** 桶导出模式:
+ *  - full: 全量导出,所有 export 都进入 barrel(默认,与旧行为一致;
+ *          不应用 @internal 过滤,与引入可见性机制之前完全等价)
+ *  - lib:  库导出,仅导出带 @public 的符号,@internal 与未标注符号一律排除
+ */
+export type ExportMode = "full" | "lib";
+
+export interface NamedExport {
   name: string;
   kind: "value" | "type";
+  /** 来自符号上方紧邻 JSDoc 块注释的标签名集合(小写) */
+  tags: ReadonlySet<string>;
 }
 
 interface SubModuleInfo {
   dirName: string;
   absPath: string;
+  /** Symbol names re-exported by the sub-barrel (always the full set, so
+   *  internal callers like tests can `import { x } from "./folder"`). */
   valueExports: string[];
   typeExports: string[];
+  /** Per-symbol TSDoc tags from the source file. The top-level barrel
+   *  uses these to honor `--lib` visibility without re-parsing. */
+  valueTags: Map<string, ReadonlySet<string>>;
+  typeTags: Map<string, ReadonlySet<string>>;
 }
 
 // ---------------------------------------------------------------------------
@@ -43,10 +60,20 @@ function isPathLike(s: string): boolean {
 // AST 辅助
 // ---------------------------------------------------------------------------
 
-/** 从单个 .ts 文件提取所有具名导出，区分值/类型 */
-function extractFileExports(filePath: string): NamedExport[] {
+/** 解析失败时返回空集合,保持原 barrel 容错语义 */
+function getTagsForNode(
+  sortedComments: ReadonlyArray<{ type: string; value: string; start: number; end: number }>,
+  anchor: { start: number },
+): Set<string> {
+  const body = findPrecedingJsDoc(sortedComments, anchor.start);
+  return body ? parseJsDocTags(body) : new Set();
+}
+
+/** 从单个 .ts 文件提取所有具名导出,区分值/类型,并按 mode 过滤可见性 */
+export function extractFileExports(filePath: string, mode: ExportMode = "full"): NamedExport[] {
   try {
-    const { program } = parseTsFile(filePath);
+    const { program, comments } = parseTsFile(filePath);
+    const sortedComments = [...comments].sort((a, b) => a.start - b.start);
     const exports: NamedExport[] = [];
 
     traverseAst(program, (node) => {
@@ -57,9 +84,10 @@ function extractFileExports(filePath: string): NamedExport[] {
       // case: export function / export const / export type / export interface ...
       if (node.declaration) {
         const d = node.declaration;
+        const declTags = getTagsForNode(sortedComments, d);
         const names = extractNamesFromDeclaration(d);
         for (const name of names) {
-          exports.push({ name, kind: "value" });
+          exports.push({ name, kind: "value", tags: declTags });
         }
         // Override kind for type declarations
         if (d.type === "TSTypeAliasDeclaration" || d.type === "TSInterfaceDeclaration" || isTypeContext) {
@@ -75,19 +103,33 @@ function extractFileExports(filePath: string): NamedExport[] {
       if (node.specifiers) {
         for (const spec of node.specifiers) {
           if (spec.exported?.type === "Identifier" && spec.exported.name) {
+            const specTags = getTagsForNode(sortedComments, spec);
             exports.push({
               name: spec.exported.name,
               kind: spec.exportKind === "type" || isTypeContext ? "type" : "value",
+              tags: specTags,
             });
           }
         }
       }
     });
 
-    return exports;
+    return exports.filter((e) => shouldExport(e, mode));
   } catch {
     return [];
   }
+}
+
+/** 单一可见性判定入口。
+ *  - full 模式: 全部导出(零回归,与引入可见性机制之前完全等价)
+ *  - lib  模式: 仅导出 @public;@internal 与未标注符号一律排除
+ */
+export function shouldExport(symbol: NamedExport, mode: ExportMode): boolean {
+  if (mode === "full") return true;
+  if (symbol.tags.has("internal")) return false;
+  if (symbol.tags.has("public")) return true;
+  // lib 模式下未标注 → 不导出
+  return false;
 }
 
 /** 从声明节点提取变量名列表（处理多 declarator 等） */
@@ -129,32 +171,65 @@ function collectIdNames(id: any, out: string[]) {
   }
 }
 
-/** 从已有的 index.ts 中提取所有 re-export 名（用于分组聚合读取子模块导出） */
-function extractReExports(filePath: string): NamedExport[] {
-  try {
-    const { program } = parseTsFile(filePath);
-    const exports: NamedExport[] = [];
-
-    traverseAst(program, (node) => {
-      if (node.type !== "ExportNamedDeclaration") return;
-      if (!node.specifiers) return;
-
-      const isTypeContext = node.exportKind === "type";
-
-      for (const spec of node.specifiers) {
-        if (spec.exported?.type === "Identifier" && spec.exported.name) {
-          exports.push({
-            name: spec.exported.name,
-            kind: spec.exportKind === "type" || isTypeContext ? "type" : "value",
-          });
-        }
+/** 从 package.json 中提取主入口的 dist 路径(`.js` 形式)。 */
+function readPackageEntry(pkg: {
+  main?: string;
+  module?: string;
+  exports?: unknown;
+}): string | null {
+  if (pkg.exports) {
+    if (typeof pkg.exports === "string") return pkg.exports;
+    if (typeof pkg.exports === "object" && pkg.exports !== null) {
+      const dot = (pkg.exports as Record<string, unknown>)["."];
+      if (typeof dot === "string") return dot;
+      if (dot && typeof dot === "object") {
+        const d = dot as Record<string, unknown>;
+        const candidate =
+          (typeof d.default === "string" && d.default) ||
+          (typeof d.import === "string" && d.import) ||
+          (typeof d.require === "string" && d.require) ||
+          (typeof d.types === "string" && d.types);
+        if (candidate) return candidate;
       }
-    });
-
-    return exports;
-  } catch {
-    return [];
+    }
   }
+  return pkg.main ?? pkg.module ?? null;
+}
+
+/** 向上查找最近的 package.json,返回其绝对路径。 */
+function findNearestPackageJson(startDir: string): string | null {
+  let dir = resolve(startDir);
+  while (true) {
+    const candidate = join(dir, "package.json");
+    if (existsSync(candidate)) return candidate;
+    const parent = dirname(dir);
+    if (parent === dir) return null;
+    dir = parent;
+  }
+}
+
+/** 把 package.json 入口的 dist 路径映射到源路径(`.js` → `.ts`,`/dist/` → `/src/`)。 */
+function mapDistEntryToSource(distEntry: string, pkgDir: string): string {
+  const abs = resolve(pkgDir, distEntry);
+  return abs.replace(/[\\/]dist[\\/]/, "/src/").replace(/\.js$/, ".ts");
+}
+
+/** 给定一个 group 根目录,判断它是否对应 package.json 的主入口 barrel。 */
+function isEntryBarrel(groupRoot: string): boolean {
+  const pkgPath = findNearestPackageJson(groupRoot);
+  if (!pkgPath) return false;
+  let pkg: { main?: string; module?: string; exports?: unknown };
+  try {
+    pkg = JSON.parse(readFileSync(pkgPath, { encoding: "utf-8" })) as typeof pkg;
+  } catch {
+    return false;
+  }
+  const distEntry = readPackageEntry(pkg);
+  if (!distEntry) return false;
+  const pkgDir = dirname(pkgPath);
+  const entrySrcAbs = mapDistEntryToSource(distEntry, pkgDir);
+  const barrelAbs = resolve(groupRoot, "index.ts");
+  return entrySrcAbs === barrelAbs;
 }
 
 // ---------------------------------------------------------------------------
@@ -205,19 +280,35 @@ function genSubModuleIndex(
   return lines.join("\n");
 }
 
-function genGroupIndex(modules: SubModuleInfo[]): string {
+function genGroupIndex(
+  modules: SubModuleInfo[],
+  mode: ExportMode = "full"
+): string {
   const lines: string[] = [];
   lines.push(MARKER);
   lines.push("");
 
   const sorted = [...modules].sort((a, b) => a.dirName.localeCompare(b.dirName));
 
+  const filterByMode = (
+    names: string[],
+    tags: Map<string, ReadonlySet<string>>,
+    kind: "value" | "type"
+  ): string[] => {
+    if (mode === "full") return names;
+    return names.filter((n) =>
+      shouldExport({ name: n, kind, tags: tags.get(n) ?? new Set() }, mode)
+    );
+  };
+
   for (const m of sorted) {
-    if (m.valueExports.length > 0) {
-      lines.push(`export { ${m.valueExports.join(", ")} } from "./${m.dirName}";`);
+    const values = filterByMode(m.valueExports, m.valueTags, "value");
+    const types = filterByMode(m.typeExports, m.typeTags, "type");
+    if (values.length > 0) {
+      lines.push(`export { ${values.join(", ")} } from "./${m.dirName}";`);
     }
-    if (m.typeExports.length > 0) {
-      lines.push(`export type { ${m.typeExports.join(", ")} } from "./${m.dirName}";`);
+    if (types.length > 0) {
+      lines.push(`export type { ${types.join(", ")} } from "./${m.dirName}";`);
     }
   }
 
@@ -235,6 +326,7 @@ function processSubModule(
   subDirAbs: string,
   subDirName: string,
   dryRun: boolean,
+  mode: ExportMode = "full",
 ): SubModuleInfo | null {
   let entries: import("node:fs").Dirent[];
   try {
@@ -257,10 +349,13 @@ function processSubModule(
 
   if (tsFiles.length === 0) return null;
 
-  // Extract exports from each file
+  // Extract exports from each file. Sub-module barrels are organizational
+  // (let tests / internal callers `import { x } from "./folder"` work) — they
+  // always use `full` mode. Only the top-level entry barrel honors the
+  // user's `--lib` visibility filter.
   const fileExports: { name: string; exports: NamedExport[] }[] = [];
   for (const f of tsFiles) {
-    const exps = extractFileExports(f.path);
+    const exps = extractFileExports(f.path, "full");
     if (exps.length > 0) {
       fileExports.push({ name: f.name, exports: exps });
     }
@@ -277,13 +372,24 @@ function processSubModule(
     return null;
   }
 
-  // Collect all exports from this sub-module
-  const allValues = fileExports
-    .flatMap((f) => f.exports.filter((e) => e.kind === "value"))
-    .map((e) => e.name);
-  const allTypes = fileExports
-    .flatMap((f) => f.exports.filter((e) => e.kind === "type"))
-    .map((e) => e.name);
+  // Collect all exports from this sub-module, plus per-symbol TSDoc tags so
+  // the top-level barrel can apply `--lib` visibility without re-parsing.
+  const allValues: string[] = [];
+  const allTypes: string[] = [];
+  const valueTags = new Map<string, ReadonlySet<string>>();
+  const typeTags = new Map<string, ReadonlySet<string>>();
+
+  for (const f of fileExports) {
+    for (const e of f.exports) {
+      if (e.kind === "value") {
+        allValues.push(e.name);
+        valueTags.set(e.name, e.tags);
+      } else {
+        allTypes.push(e.name);
+        typeTags.set(e.name, e.tags);
+      }
+    }
+  }
 
   const seenV = new Set<string>();
   const dedupedValues = allValues.filter((n) => seenV.has(n) ? false : seenV.add(n));
@@ -309,12 +415,15 @@ function processSubModule(
     absPath: subDirAbs,
     valueExports: dedupedValues,
     typeExports: dedupedTypes,
+    valueTags,
+    typeTags,
   };
 }
 
 /** 收集当前目录中 flat .ts 文件的导出，每个文件作为一个独立模块 */
 function collectFlatModules(
   dirAbs: string,
+  mode: ExportMode = "full",
 ): SubModuleInfo[] {
   const result: SubModuleInfo[] = [];
   let entries: import("node:fs").Dirent[];
@@ -333,14 +442,28 @@ function collectFlatModules(
 
     const base = entry.name.replace(/\.ts$/, "");
     const path = join(dirAbs, entry.name);
-    const exps = extractFileExports(path);
+    // Flat-file barrels at the top level honor `mode` (a flat `.ts` file IS
+    // the public module — no sub-barrel in between to re-export from).
+    const exps = extractFileExports(path, mode);
     if (exps.length === 0) continue;
+
+    const valueTags = new Map<string, ReadonlySet<string>>();
+    const typeTags = new Map<string, ReadonlySet<string>>();
+    for (const e of exps) {
+      if (e.kind === "value") {
+        valueTags.set(e.name, e.tags);
+      } else {
+        typeTags.set(e.name, e.tags);
+      }
+    }
 
     result.push({
       dirName: base,
       absPath: path,
       valueExports: exps.filter((e) => e.kind === "value").map((e) => e.name),
       typeExports: exps.filter((e) => e.kind === "type").map((e) => e.name),
+      valueTags,
+      typeTags,
     });
   }
 
@@ -348,13 +471,23 @@ function collectFlatModules(
 }
 
 /** 处理单个组路径（如 packages/contract/src/utils/）→ 先处理子模块，再生成组级 index.ts */
-function processGroup(name: string, rootDir: string, dryRun: boolean, excludedRaw: string[] = []): void {
+function processGroup(
+  name: string,
+  rootDir: string,
+  dryRun: boolean,
+  excludedRaw: string[] = [],
+  mode: ExportMode = "full",
+): void {
   const groupAbs = resolve(process.cwd(), rootDir);
 
   if (!existsSync(groupAbs)) {
     pail.warn(`目录不存在，跳过：${chalk.dim(rootDir)}`);
     return;
   }
+
+  // --lib 只应用于 package.json 主入口对应的 barrel;其他 group 始终全量
+  const entryMode: ExportMode =
+    mode === "lib" && !isEntryBarrel(groupAbs) ? "full" : mode;
 
   // 计算 groupAbs 下被排除的子目录 basename（基于绝对路径前缀匹配）
   const groupAbsNorm = groupAbs.replace(/[\\/]+$/, "");
@@ -390,7 +523,8 @@ function processGroup(name: string, rootDir: string, dryRun: boolean, excludedRa
 
   if (subDirs.length === 0) {
     // 纯扁平目录：沿用现有路径，由 processSubModule 生成 index.ts
-    const mod = processSubModule(groupAbs, name, dryRun);
+    // 子 barrel 始终全量(组织聚合),不被 --lib 过滤
+    const mod = processSubModule(groupAbs, name, dryRun, "full");
     if (mod) {
       console.log(chalk.dim(`  ─ 扁平目录，已在同级生成 index.ts`));
     }
@@ -398,12 +532,14 @@ function processGroup(name: string, rootDir: string, dryRun: boolean, excludedRa
   }
 
   // 有子模块：同时处理 flat 文件和子模块，汇总到组级 index
-  const flatModules = collectFlatModules(groupAbs);
+  // flat 文件是顶层模块 → 用 entryMode(可能受 --lib 影响)
+  // 子模块 barrel → 始终全量(full 模式: 连 @internal 也导出,便于包内引用)
+  const flatModules = collectFlatModules(groupAbs, entryMode);
   modules.push(...flatModules);
 
   for (const subDirName of subDirs) {
     const subDirAbs = join(groupAbs, subDirName);
-    const mod = processSubModule(subDirAbs, subDirName, dryRun);
+    const mod = processSubModule(subDirAbs, subDirName, dryRun, "full");
     if (mod) {
       modules.push(mod);
     }
@@ -414,8 +550,8 @@ function processGroup(name: string, rootDir: string, dryRun: boolean, excludedRa
     return;
   }
 
-  // Step 3: 生成组级 index.ts（汇总 flat 文件 + 子模块的导出）
-  const groupContent = genGroupIndex(modules);
+  // Step 3: 生成组级 index.ts(顶层 barrel,可能受 --lib 过滤)
+  const groupContent = genGroupIndex(modules, entryMode);
   const groupIndexPath = join(groupAbs, "index.ts");
 
   // 检查：如果有人手动写了组级 index 且无标记 → 保护
@@ -443,6 +579,7 @@ function processGroup(name: string, rootDir: string, dryRun: boolean, excludedRa
 function processItemAsModule(
   itemAbs: string,
   dryRun: boolean,
+  mode: ExportMode = "full",
 ): SubModuleInfo | null {
   let st: import("node:fs").Stats;
   try { st = statSync(itemAbs); } catch { return null; }
@@ -452,19 +589,30 @@ function processItemAsModule(
     const base = basename(itemAbs);
     if (!base.endsWith(".ts")) return null;
     if (base.endsWith(".d.ts") || base.endsWith(".test.ts") || base === "index.ts") return null;
-    const exps = extractFileExports(itemAbs);
+    const exps = extractFileExports(itemAbs, mode);
     if (exps.length === 0) return null;
+    const valueTags = new Map<string, ReadonlySet<string>>();
+    const typeTags = new Map<string, ReadonlySet<string>>();
+    for (const e of exps) {
+      if (e.kind === "value") {
+        valueTags.set(e.name, e.tags);
+      } else {
+        typeTags.set(e.name, e.tags);
+      }
+    }
     return {
       dirName: base.replace(/\.ts$/, ""),
       absPath: itemAbs,
       valueExports: exps.filter((e) => e.kind === "value").map((e) => e.name),
       typeExports: exps.filter((e) => e.kind === "type").map((e) => e.name),
+      valueTags,
+      typeTags,
     };
   }
 
   if (st.isDirectory()) {
-    // 子目录：复用 processSubModule（生成该子目录的 index.ts 并返回 SubModuleInfo）
-    return processSubModule(itemAbs, basename(itemAbs), dryRun);
+    // 子目录：复用 processSubModule(组织聚合,始终全量不过滤)
+    return processSubModule(itemAbs, basename(itemAbs), dryRun, "full");
   }
 
   return null;
@@ -476,6 +624,7 @@ function processPathGroup(
   included: string[],
   dryRun: boolean,
   excludedRaw: string[] = [],
+  mode: ExportMode = "full",
 ): void {
   const groupAbs = resolve(process.cwd(), name);
 
@@ -483,6 +632,10 @@ function processPathGroup(
     pail.warn(`目录不存在，跳过：${chalk.dim(name)}`);
     return;
   }
+
+  // --lib 只应用于 package.json 主入口对应的 barrel;其他 group 始终全量
+  const entryMode: ExportMode =
+    mode === "lib" && !isEntryBarrel(groupAbs) ? "full" : mode;
 
   // 计算 groupAbs 下被排除的子项 basename（基于绝对路径前缀匹配）
   const groupAbsNorm = groupAbs.replace(/[\\/]+$/, "");
@@ -508,7 +661,7 @@ function processPathGroup(
       continue;
     }
     const itemAbs = resolve(process.cwd(), item);
-    const mod = processItemAsModule(itemAbs, dryRun);
+    const mod = processItemAsModule(itemAbs, dryRun, entryMode);
     if (mod) {
       modules.push(mod);
     }
@@ -519,8 +672,8 @@ function processPathGroup(
     return;
   }
 
-  // 生成组级 index.ts（汇总所有子项）
-  const groupContent = genGroupIndex(modules);
+  // 生成组级 index.ts(汇总所有子项,顶层 barrel,可能受 --lib 过滤)
+  const groupContent = genGroupIndex(modules, entryMode);
   const groupIndexPath = join(groupAbs, "index.ts");
 
   if (existsSync(groupIndexPath) && !hasAutoGenMarker(groupIndexPath)) {
@@ -550,6 +703,8 @@ function processPathGroup(
 export interface BarrelOptions {
   group?: string;
   dryRun?: boolean;
+  /** 库导出模式:仅导出 @public 符号,排除 @internal 与未标注符号 */
+  lib?: boolean;
 }
 
 export async function barrelCommand(options: BarrelOptions = {}): Promise<void> {
@@ -584,6 +739,11 @@ export async function barrelCommand(options: BarrelOptions = {}): Promise<void> 
   if (options.dryRun) {
     console.log(chalk.yellow("  --dry-run 模式，仅预览不写入\n"));
   }
+  if (options.lib) {
+    console.log(chalk.yellow("  --lib 模式，仅导出 @public 标记的符号(@internal / 未标注均不导出)\n"));
+  }
+
+  const mode: ExportMode = options.lib ? "lib" : "full";
 
   let totalPaths = 0;
   for (const name of groupNames) {
@@ -609,18 +769,18 @@ export async function barrelCommand(options: BarrelOptions = {}): Promise<void> 
     if (isPathLike(name)) {
       // 路径形式组：included 是组名下的子内容列表（子目录 + 散文件），
       // 一次性处理整组，汇总到组级 index.ts。
-      processPathGroup(name, included, !!options.dryRun, excluded);
+      processPathGroup(name, included, !!options.dryRun, excluded, mode);
       totalPaths += included.length;
     } else {
       for (const rootDir of included) {
-        processGroup(name, rootDir, !!options.dryRun, excluded);
+        processGroup(name, rootDir, !!options.dryRun, excluded, mode);
         totalPaths++;
       }
     }
   }
 
-  const mode = options.dryRun ? "(dry-run)" : "已生成";
-  pail.success(`\n  ${mode} ${totalPaths} 个路径的 barrel 导出`);
+  const statusMode = options.dryRun ? "(dry-run)" : "已生成";
+  pail.success(`\n  ${statusMode} ${totalPaths} 个路径的 barrel 导出`);
   console.log(chalk.dim("提示：所有生成文件均带有自动标记，可随时安全地重新运行 `api-gen barrel` 覆盖"));
 }
 

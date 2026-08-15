@@ -1,12 +1,19 @@
-import { parseSync, ParseResult } from "oxc-parser";
+import { parseSync, ParseResult, Comment } from "oxc-parser";
 import { readFileSync } from "@visulima/fs";
 import { basename } from "@visulima/path";
 
-export function parseTsFile(fileAbsPath: string): ParseResult {
+export interface TsParseResult {
+  program: ParseResult["program"];
+  comments: ReadonlyArray<Comment>;
+  errors: ParseResult["errors"];
+}
+
+/** 解析 .ts 文件,返回 program + 顶层注释 + 错误。便于 barrel 在 AST 阶段读取 JSDoc/TSDoc 标签 */
+export function parseTsFile(fileAbsPath: string): TsParseResult {
   const sourceCode = readFileSync(fileAbsPath);
   const fileName = basename(fileAbsPath);
 
-  return parseSync(fileName, sourceCode, {
+  const result = parseSync(fileName, sourceCode, {
     lang: "ts",
     sourceType: "module",
     astType: "ts",
@@ -14,6 +21,12 @@ export function parseTsFile(fileAbsPath: string): ParseResult {
     preserveParens: true,
     showSemanticErrors: false,
   });
+
+  return {
+    program: result.program,
+    comments: result.comments ?? [],
+    errors: result.errors,
+  };
 }
 
 type AstNode = Record<string, any>;

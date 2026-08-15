@@ -157,6 +157,67 @@ describe("single-app 完整流程", () => {
     expect(utilsIndex).toContain("./sort");
   });
 
+  it("--lib 模式只过滤 package.json 入口对应的 barrel", async () => {
+    // 在 utils 下放一个混合标注的子模块
+    const visDir = join(root, "src/utils/visibility");
+    mkdirSync(visDir, { recursive: true });
+    writeFileSync(
+      join(visDir, "curated.ts"),
+      "/** @public */\nexport const kept = 1;\n/** @internal */\nexport const dropped = 2;\nexport const plainValue = 3;\n/** @public 类型 */\nexport type PublicShape = { id: string };\n",
+    );
+
+    // 1) full 模式:子 barrel 全量导出(组织聚合用)
+    await runCmd(root, "../commands/barrel.js", "barrelCommand", { lib: false });
+    const visFull = readFileSync(join(visDir, "index.ts"), "utf-8");
+    expect(visFull).toContain("kept");
+    expect(visFull).toContain("dropped"); // @internal 在子 barrel 也保留(供包内/测试使用)
+    expect(visFull).toContain("plainValue");
+    expect(visFull).toContain("PublicShape");
+
+    // 2) --lib 模式:子 barrel 仍全量(用户可能需要 `import { x } from "./folder"`)
+    await runCmd(root, "../commands/barrel.js", "barrelCommand", { lib: true });
+    const visLib = readFileSync(join(visDir, "index.ts"), "utf-8");
+    expect(visLib).toContain("kept");
+    expect(visLib).toContain("dropped"); // 子 barrel 不过滤
+    expect(visLib).toContain("plainValue");
+    expect(visLib).toContain("PublicShape");
+
+    // 父级 utils/index.ts 也仍要 re-export 该子模块(只要该子模块非空)
+    const utilsIndex = readFileSync(join(root, "src/utils/index.ts"), "utf-8");
+    expect(utilsIndex).toContain("./visibility");
+  });
+
+  it("--lib 模式只过滤 package.json 入口对应的顶层 barrel", async () => {
+    // 在 packages/logixlysia/src 下放一个混合标注的子模块,该路径
+    // 配了 package.json main 指向 ./dist/index.js → src/index.ts 入口。
+    const targetDir = join(root, "packages/logixlysia/src");
+    mkdirSync(join(targetDir, "visibility"), { recursive: true });
+    writeFileSync(
+      join(targetDir, "visibility/curated.ts"),
+      "/** @public */\nexport const kept = 1;\n/** @internal */\nexport const dropped = 2;\nexport const plainValue = 3;\n/** @public 类型 */\nexport type PublicShape = { id: string };\n",
+    );
+    // 给 packages/logixlysia 写一个真实的 package.json,main 指向入口
+    mkdirSync(join(targetDir, ".."), { recursive: true });
+    writeFileSync(
+      join(targetDir, "..", "package.json"),
+      JSON.stringify({ name: "logixlysia", main: "./dist/index.js" }),
+    );
+
+    // 在 cfg 里加 packages/logixlysia/src 作为子组
+    const cfg = JSON.parse(readFileSync(configPath, "utf-8"));
+    cfg.exportIndex.includes = ["utils", "packages/logixlysia/src"];
+    cfg.exportIndex["packages/logixlysia/src"] = ["packages/logixlysia/src/visibility"];
+    writeFileSync(configPath, JSON.stringify(cfg, null, 2), "utf-8");
+
+    // --lib 模式:顶层 src/index.ts 应该过滤(@public 保留,未标注/@internal 排除)
+    await runCmd(root, "../commands/barrel.js", "barrelCommand", { lib: true });
+    const topIndex = readFileSync(join(targetDir, "index.ts"), "utf-8");
+    expect(topIndex).toContain("kept");
+    expect(topIndex).toContain("PublicShape");
+    expect(topIndex).not.toContain("plainValue");
+    expect(topIndex).not.toContain("dropped");
+  });
+
   it("路径形式组：sync 把子内容列表填入（子目录 + 散文件）", async () => {
     // 模拟 packages/logixlysia/src 目录：含子目录 + 散文件 + 孙子级（验证不递归）
     const targetDir = join(root, "packages/logixlysia/src");
