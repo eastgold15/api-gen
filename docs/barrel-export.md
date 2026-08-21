@@ -96,6 +96,38 @@ api-gen init
 
 等价于对两个目录分别执行 barrel 生成。
 
+### 路径形式组（自动展开 / 级联 barrel）
+
+组名本身是路径（含 `/` 或以 `.` 开头），比如 `packages/contract/src` 或 `./src`。**空数组**时会自动递归展开，不用先跑 `sync` 填清单：
+
+```jsonc
+{
+  "exportIndex": {
+    "includes": ["packages/contract/src"]
+    // 不用写 "packages/contract/src": [...] —— barrel 自动扫描
+  }
+}
+```
+
+**自动展开规则**（与 `sync` 共享同一份 `scanPathGroupChildren`）：
+
+- 递归遍历组根下所有有 `.ts` 内容的子目录（任意深度）→ 每个子目录都生成 `index.ts`
+- 组根的散 `.ts` 文件 → 直接进组根 `index.ts`
+- 深层散文件 → 归所属子目录的 barrel 管（不上升到组根）
+- SKIP_DIRS 黑名单全程生效
+
+**级联 barrel**：每个子目录的 `index.ts` 不只聚合自己的散文件，还 re-export 直接子目录的 barrel：
+
+```
+src/index.ts                  ← 父级：散文件 + 一级子目录
+src/utils/index.ts            ← 中间层：散文件 + ./nested 转发
+src/utils/nested/index.ts     ← 叶层：deep 等
+```
+
+这样 `import { x } from "@/contract"` / `from "@/contract/utils"` / `from "@/contract/utils/nested"` 三种深度都能用。
+
+显式给数组时（比如你已经手工维护了子项清单）就尊重你的清单，不再自动展开。
+
 ```bash
 # 扫描所有组，生成 barrel
 api-gen barrel
@@ -126,11 +158,13 @@ api-gen barrel --dry-run
 - `packages/contract/src/utils` 正常扫描
 - `packages/contract/src/utils/internal` 被排除（不进入子目录扫描，不生成 `index.ts`，父级 barrel 也不引用它）
 - 运行 barrel 时会在日志里提示 `已排除（配置忽略）：packages/contract/src/utils/internal`
+- 路径形式组里 `!` 同样生效：`!packages/contract/src/drizzle` 会排除该子目录（连同其后代）
 
 **典型场景：**
 
 - 内部实现细节目录不希望对外导出（`internal/`、`__tests__/`）
 - 临时调试 / 实验目录暂时不让进 barrel
+- 路径形式组里关掉某个子目录（如 `./src/_internal`）
 
 如果整组路径全是 `!` 项（比如 `utils: ["!foo"]`），barrel 会打印警告并跳过该组，不报错。
 
@@ -140,7 +174,8 @@ api-gen barrel --dry-run
 2. 运行 `api-gen barrel`
 3. CLI 自动更新：
    - `utils/pagination/index.ts`（子模块 barrel）
-   - `utils/index.ts`（组级 barrel）
+   - `utils/index.ts`（组级 barrel，级联模式还会 re-export 子目录 barrel）
+   - 路径形式组：`src/index.ts`（组级）+ 每层子目录自己的 `index.ts`
 4. 提交变更
 
 ## 生成规则

@@ -4,16 +4,12 @@ import { resolve, join, dirname } from "@visulima/path";
 import { runPipeline } from "../utils/file-transform.js";
 import chalk from "@visulima/colorize";
 import { pail } from "@visulima/pail";
+import { isPathLike, scanPathGroupChildren, SKIP_DIRS } from "../utils/export-index.js";
 import type { ApiConfig, ExportIndexConfig } from "../types/api-gen.json.js";
 
 // ---------------------------------------------------------------------------
 // 常量
 // ---------------------------------------------------------------------------
-
-const SKIP_DIRS = new Set([
-  "node_modules", "dist", ".vscode", ".git", "scripts",
-  ".next", ".agengt", ".claude", ".lingma", "turbo",
-]);
 
 /** 扫描目标文件夹名 */
 const BARREL_TARGETS = new Set([
@@ -24,30 +20,6 @@ const BARREL_TARGETS = new Set([
 // ---------------------------------------------------------------------------
 // 目录扫描
 // ---------------------------------------------------------------------------
-
-/** 判断组名是否为路径形式（含 / 或以 . 开头），区别于约定名组（utils/hooks 等） */
-function isPathLike(s: string): boolean {
-  return s.includes("/") || s.includes("\\") || s.startsWith(".");
-}
-
-/** 扫一个路径形式组：返回它下面的一级子目录 + 散 .ts 文件 */
-function scanPathGroup(absPath: string, relPath: string): string[] {
-  if (!existsSync(absPath)) return [];
-  let entries: import("node:fs").Dirent[];
-  try { entries = readdirSync(absPath, { withFileTypes: true }); } catch { return []; }
-
-  const paths: string[] = [];
-  for (const e of entries) {
-    if (SKIP_DIRS.has(e.name)) continue;
-    if (e.name === "index.ts" || e.name.endsWith(".d.ts") || e.name.endsWith(".test.ts")) continue;
-    if (e.isDirectory()) {
-      paths.push(join(relPath, e.name));
-    } else if (e.isFile() && e.name.endsWith(".ts")) {
-      paths.push(join(relPath, e.name));
-    }
-  }
-  return paths.sort();
-}
 
 function collectDirs(
   dir: string,
@@ -118,20 +90,23 @@ export async function syncCommand(): Promise<void> {
   for (const name of current.includes) {
     const existingPaths = current[name];
     if (existingPaths && existingPaths.length > 0) {
-      // 过滤掉已不存在的目录
-      const validPaths = existingPaths.filter((p) => existsSync(resolve(cwd, p)));
+      // 保留全部 `!` 排除项原样不动,只对非 `!` 项做存在性校验;
+      // 路径形式组的子项可能是深层子目录,barrel 会按 included 列表顺序处理。
+      const validPaths = existingPaths.filter((p) =>
+        p.startsWith("!") || existsSync(resolve(cwd, p)),
+      );
       if (validPaths.length !== existingPaths.length) changed = true;
       updated[name] = validPaths;
       console.log(chalk.dim(`  ${name}: 保留 ${validPaths.length} 个路径${validPaths.length < existingPaths.length ? chalk.yellow(`，移除 ${existingPaths.length - validPaths.length} 个失效路径`) : ""}`));
     } else if (isPathLike(name)) {
-      // 路径形式组：组名 = 路径，sync 填组名下的子目录 + 散 .ts 文件列表。
+      // 路径形式组：组名 = 路径，sync 递归填组名下所有有内容的子目录 + 散 .ts 文件。
       // barrel 接到列表后自识别每项是文件还是目录，统一汇总到组级 index.ts。
       const abs = resolve(cwd, name);
       if (existsSync(abs)) {
-        const children = scanPathGroup(abs, name);
+        const children = scanPathGroupChildren(abs, name);
         updated[name] = children;
         changed = true;
-        console.log(chalk.green(`  ✓ ${name}: 填充 ${children.length} 个子项`));
+        console.log(chalk.green(`  ✓ ${name}: 填充 ${children.length} 个子项（递归）`));
         for (const c of children) {
           console.log(chalk.dim(`    - ${c}`));
         }
