@@ -93,10 +93,12 @@ barrel 不依赖 sync 先跑——直接对**空数组的路径形式组**也自
 barrel 处理时按**深度倒序**写各层 barrel（深的先），然后聚合时父级 barrel 通过 `from "./subdir"` 把子目录 barrel 链入，实现"递归级联"：
 
 ```
-src/index.ts                  ← 父级汇总：散文件 + 一级子目录
+src/index.ts                  ← 父级汇总：散文件 + 一级子目录(孙级不直接出现)
 src/utils/index.ts            ← 中间层：re-export ./nested（级联）
 src/utils/nested/index.ts     ← 叶层：聚合 nested/ 下的散文件
 ```
+
+**层级隔离**：父级 `src/index.ts` 只对一级子目录写 `from "./xxx"` 行；孙级目录路径不直接出现。孙级符号经中间层 `foo/index.ts` 的级联 re-export 间接抵达组根——既保留 `import { deep } from "@/src"` 这种深度导入能力，又不会因 `from "./foo"` + `from "./foo/sub"` 两行同名符号重复导出。
 
 这样 `import { x } from "@/contract"` / `from "@/contract/utils"` / `from "@/contract/utils/nested"` 三种深度都能用。
 

@@ -126,6 +126,21 @@ src/utils/nested/index.ts     ← 叶层：deep 等
 
 这样 `import { x } from "@/contract"` / `from "@/contract/utils"` / `from "@/contract/utils/nested"` 三种深度都能用。
 
+**层级隔离（避免重复导出）**：父级 `src/index.ts` **只**引用**一级子目录**（路径不含 `/`），孙级目录的路径**不直接**出现在组根。孙级符号经中间层 `foo/index.ts` 的级联 re-export 间接抵达组根——既能被 `import { deep } from "@/src"` 拿到，又不会因 `from "./foo"` 和 `from "./foo/sub"` 两行同名符号重复导出。实际生成：
+
+```ts
+// src/index.ts（父级，3 行，组根不出现孙级路径）
+export { paginate, deep } from "./utils";   // paginate 是 utils 的叶子;deep 经 ./utils → ./nested 间接
+export { useFoo } from "./hooks";
+export { foo } from "./foo.ts";
+```
+
+```ts
+// src/utils/index.ts（中间层，仍 re-export ./nested）
+export { paginate } from "./page";
+export { deep } from "./nested";   // ← 孙级符号从这里进入 ./utils,再在父级 ./utils 行间接出现
+```
+
 显式给数组时（比如你已经手工维护了子项清单）就尊重你的清单，不再自动展开。
 
 ```bash

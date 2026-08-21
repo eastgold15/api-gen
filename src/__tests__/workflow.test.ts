@@ -268,8 +268,9 @@ describe("single-app 完整流程", () => {
     expect(content).toContain('from "./utils"');
     expect(content).toContain('from "./hooks"');
 
-    // 递归到底:孙子级也进入汇总
-    expect(content).toContain('from "./utils/nested"');
+    // 递归到底:孙子级也进入汇总(经 ./utils 间接)
+    expect(content).not.toContain('from "./utils/nested"');
+    expect(content).toContain('from "./utils"');
 
     // 子目录的 index.ts 应已生成
     expect(existsSync(join(root, "packages/logixlysia/src/utils/index.ts"))).toBe(true);
@@ -281,6 +282,13 @@ describe("single-app 完整流程", () => {
     expect(utilsIndex).toContain("paginate");
     // 递归级联:中间目录的 barrel 也 re-export 子目录的 barrel
     expect(utilsIndex).toContain('from "./nested"');
+
+    // 父级 src/index.ts 的 from "./utils" 行包含 paginate(一级叶子)和
+    // deep(孙级符号)——孙级符号经级联抵达组根,而不是直接 from "./utils/nested"
+    const utilsLine = content.match(/export\s*\{[^}]*\}\s*from\s*"\.\/utils"/)?.[0] ?? "";
+    expect(utilsLine).toContain("paginate");
+    expect(utilsLine).toContain("deep");
+    expect(utilsLine).not.toContain("nested");
 
     // 孙子级的 index.ts 应包含 deep
     const nestedIndex = readFileSync(join(root, "packages/logixlysia/src/utils/nested/index.ts"), "utf-8");

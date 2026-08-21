@@ -60,7 +60,7 @@ bun run type-check                # tsc --noEmit 类型检查
 - `scan` → 逐 app 用 `src/scanner/controller.ts` 提取 Elysia 路由（`new Elysia({prefix})` + `.get/.post` 链式调用的 `detail`/`allPermissions`），按 tag 分组写 `api-spec.json`。
 - `make-prompt` → 用 `api-spec.json` + 模板渲染出 `ai-prompt.md`（`-t` 按 tag、`-p` 按路径筛选）。
 - `generate` → 读两套配置，逐 tag 模块调 `src/generator/ai.ts` 的 `callAI()`（OpenAI 兼容格式，强制 JSON 返回，带指数退避重试），把 `schemaAdditions`（追加）/`contractAdditions`（覆盖）写盘。
-- `barrel` → 扫描 `exportIndex` 组路径，用 AST 提取每个文件的具名导出（区分 value/type），生成级联 `index.ts` 桶导出。路径形式组（组名 = 路径）空数组时自动递归展开,中间层 barrel 也会 re-export 子目录 barrel（递归级联）。共享工具 `src/utils/export-index.ts` 的 `scanPathGroupChildren` 同时给 sync 用。
+- `barrel` → 扫描 `exportIndex` 组路径，用 AST 提取每个文件的具名导出（区分 value/type），生成级联 `index.ts` 桶导出。**路径形式组:组根只引用一级子目录,孙级经中间层 barrel 间接暴露**(避免重复导出)。路径形式组（组名 = 路径）空数组时自动递归展开,中间层 barrel 也会 re-export 子目录 barrel（递归级联）。共享工具 `src/utils/export-index.ts` 的 `scanPathGroupChildren` 同时给 sync 用。
 - `link` → 扫描 controllers 目录，AST 提取 `export const xxx = new Elysia(...)` 变量名，生成聚合所有控制器的 `applyAllControllers()`。
 - `raw` → 从 drizzle schema 提取 `pgTable` 表，在 `dtoDir/raw/` 生成 `*.raw.ts` 的 `spread()` 基础字段定义。
 

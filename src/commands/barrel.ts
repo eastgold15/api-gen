@@ -756,13 +756,28 @@ function processPathGroup(
       continue;
     }
     const itemAbs = resolve(process.cwd(), item);
+    // 关键:组根只引用一级子目录,孙级不直接出现在 src/index.ts。
+    // 父级 modules 列表只收集"一级"项,避免 genGroupIndex 给祖孙目录
+    // 各写一行 export { ... } from "./xxx" 产生符号重复导出。
+    // 孙级仍要调 processItemAsModule —— 它的 index.ts 必须先写盘,
+    // 父级 processSubModule 才能在 376-384 行 readSubModuleInfoFromIndex
+    // 读到孙级符号集,中间层 foo/index.ts 的级联 re-export 才能正常。
+    // sorted 已按深度倒序(深先父后),这条链自然成立。
+    const relFromGroup = relative(groupAbsNorm, itemAbs).replace(/\\/g, "/");
+    const isTopLevel = !relFromGroup.includes("/");
+
+    if (!isTopLevel) {
+      processItemAsModule(itemAbs, dryRun, entryMode);
+      continue;
+    }
+
     const mod = processItemAsModule(itemAbs, dryRun, entryMode);
     if (!mod) continue;
     // 递归填充时,子项可能是 group 根下的深层路径(如 utils/nested),
     // processItemAsModule 返回的 dirName 只有 basename(会变成 ./nested,
     // 路径对不上组根)。这里覆盖为相对 groupAbs 的正路径,供 genGroupIndex
-    // 生成 from "./utils/nested" 这种正确的 import。
-    const relFromGroup = relative(groupAbsNorm, itemAbs).replace(/\\/g, "/");
+    // 生成 from "./utils/nested" 这种正确的 import(此分支只在一级时进入,
+    // relFromGroup 此时已不含 /,dirName 实际等于 basename,赋值是 noop 兜底)。
     if (relFromGroup && relFromGroup !== ".") {
       mod.dirName = relFromGroup.replace(/\.ts$/, "");
     }
