@@ -9,6 +9,28 @@
 
 ## 安装
 
+### 安装 Claude Code Skill
+
+为 Claude Code 安装本仓库的 `api-gen` skill，让 Claude 帮你在 `api-gen` 项目里操作时自动加载完整 CLI 速通：
+
+```bash
+# 项目级安装（写入 .claude/skills/）
+npx skills add eastgold15/api-gen
+
+# 全局安装（写入 ~/.claude/skills/）
+npx skills add eastgold15/api-gen -g
+
+# 跳过确认 + 限定 Claude Code
+npx skills add eastgold15/api-gen -y -a claude-code
+
+# 先看可装什么，不写盘
+npx skills add eastgold15/api-gen --list
+```
+
+安装后在 Claude Code 里说"跑 api-gen 流程"或"加新字典 def 文件"会触发此 skill，详见 [`.claude/skills/api-gen/SKILL.md`](./.claude/skills/api-gen/SKILL.md)。
+
+### 安装 CLI
+
 ```bash
 bun run build   # packem 打包 + npm link，本地全局可用 api-gen
 ```
