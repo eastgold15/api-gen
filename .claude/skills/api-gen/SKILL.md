@@ -1,6 +1,6 @@
 ---
 name: api-gen
-description: This skill should be used when working with the `api-gen` CLI tool — a barrel-export + Elysia scaffolding generator for the Elysia + Drizzle + TypeBox + Eden-TanStack-Query stack. Activates for any task involving running `api-gen init/sync/info/scan/barrel/raw/gen-tbschema/link/gen-hook/generate/make-prompt`, regenerating `index.ts` barrel files, scaffolding tbschema / raw / hook files, or extending the tool itself. Source: /home/pori/Documents/GitHub/api-gen.
+description: this skill should be used when working with the `api-gen` CLI tool — a barrel-export + Elysia scaffolding generator for the Elysia + Drizzle + TypeBox + Eden-TanStack-Query stack. Activates for any task involving running `api-gen init/sync/info/scan/barrel/raw/gen-tbschema/link/gen-hook/generate/make-prompt`, regenerating `index.ts` barrel files, scaffolding tbschema / raw / hook files, or extending the tool itself. Source: /home/pori/Documents/GitHub/api-gen.
 ---
 
 # api-gen CLI 速通
@@ -162,49 +162,16 @@ api-gen gen-hook -t b2b-admin # 只写 b2b-admin
 | `docs/commands/gen-tbschema.md` | 骨架生成 + raw 依赖 + `--force` 语义 |
 | `docs/commands/gen-hook.md` | eden hook 命名规则 + `edenPrefix` 配置 |
 
-## §8 工具源码速查
-
-| 文件 | 用途 |
-|------|------|
-| `src/commands/init.ts` | 写 `.vscode/api-config.json` 模板(默认 3 组 exportIndex) |
-| `src/commands/info.ts` | 探测结构 + 交互确认 appType,写 `.vscode/api-gen.json` |
-| `src/commands/sync.ts` | 维护 `exportIndex` 路径清单 |
-| `src/commands/barrel.ts` | 生成 index.ts(主战场) |
-| `src/commands/raw.ts` | dbschema → raw,桶路径优先 |
-| `src/commands/generate-tbschema.ts` | dbschema + raw → tbschema 骨架 |
-| `src/commands/link.ts` | 双聚合入口(b2b-api / web) |
-| `src/commands/generate-hook.ts` | controller → Eden hook(读 `edenPrefix`) |
-| `src/commands/scan.ts` | 抽 Elysia 路由 → `.vscode/api-spec.json` |
-| `src/commands/make-prompt.ts` | 渲染 ai-prompt.md |
-| `src/commands/generate.ts` | 调 AI 生代码 |
-| `src/commands/archive.ts` | 打包成 .tar.gz |
-| `src/structure/detector.ts` | `detectLayout`(项目结构探测 + AppType 默认值) |
-| `src/utils/ast-scanner.ts` | OXc 解析公共底座 |
-| `src/utils/export-index.ts` | `scanPathGroupChildren` 递归扫描 + `SKIP_DIRS` |
-| `src/utils/tree-builder.ts` | LAYERS 常量 + 结构树渲染 |
-| `src/utils/jsdoc-tags.ts` | `@public` / `@internal` 解析 |
-| `src/scanner/controller.ts` | Elysia 路由提取(给 scan / gen-hook 用) |
-| `src/types/api-gen.json.ts` | 配置 TS 类型(`ApiConfig` / `ApiGenRootConfig` / `AppType` / `CommonLayout` / `AppLayout`) |
-
-## §9 常见错误(踩过的)
+## §8 常见错误(踩过的)
 
 | 错误 | 现象 | 修正 |
 |------|------|------|
 | 倒过来跑:`raw` → `barrel` | raw 报"找不到 drizzle 桶",fallback 到单文件路径 | 改顺序:**先 `barrel` 再 `raw`** |
 | 没跑 `info` 就跑 `link` / `gen-hook` | 报"缺少 .vscode/api-gen.json" | 先 `api-gen info` 生成 |
-| 跑 `gen-hook` 报 `eden.api.v1.*` 不存在 | 没配 `edenPrefix`,但你的 eden 用了 prefix | 在 api-gen.json 加 `edenPrefix: "api"` |
+| 跑 `gen-hook` 报 `eden.api.v1.*` 不存在 | 没配 `edenPrefix`,但 eden 实际挂了 prefix | 在 api-gen.json 加 `edenPrefix: "api"` |
 | 手写 `index.ts` 加了 marker | 下次 barrel 覆盖你的内容 | 不要加 marker;真要手写就别加 marker |
-| `link` 生成文件,`health` 重复 import | b2b-api `health` 既在 applyAllModules 链里,又单独 export | 已是当前行为:`health` 自动从链里剔除,单独 `export { healthController }` |
+| `link` 生成文件,`health` 重复 import | b2b-api `health` 既在 applyAllModules 链里又单独 export | 当前行为:`health` 自动从链里剔除,单独 `export { healthController }` |
 | 从 `apps/*` 子目录跑 | 找不到 `.vscode/api-config.json` | 切回 worktree 根 |
-| `info` 报错 `UnknownPromptTypeError: "list"` | 用错 inquirer v14 的 prompt type | 已是 fixed,源码用 `type: "select"` |
 
-## §10 扩展工具
-
-改 `src/commands/*.ts` → `bun run build`(自动 `npm link`)→ 在项目里跑验证。
-
-- **新增命令**:在 `src/commands/<name>.ts` 导出 `xxxCommand` + `default`,然后到 `src/index.ts` 注册
-- **新增 AST 提取**:在 `src/utils/ast-scanner.ts` 的 `traverseAst` 回调加节点类型判断,**不要引入正则**
-- **新增 layer 后缀**:改 `src/utils/tree-builder.ts` 的 `LAYERS` 数组
-- **新增 AppType 行为**:改 `src/types/api-gen.json.ts` 的 `AppType` 联合 + `src/structure/detector.ts` 的 `probeAppType()` 决策表 + `src/commands/link.ts` 的 `planForApp()`
-- **新测试 fixture**:放 `fixtures/<name>/`,然后 `process.chdir` + `?cb=N` 缓存破坏 import
+需要查源码或改工具时:`/home/pori/Documents/GitHub/api-gen`,所有命令在 `src/commands/`,`docs/` 里有分文件详解。
 `
