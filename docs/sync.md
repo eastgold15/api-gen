@@ -1,152 +1,62 @@
-# Sync — 配置自动维护
+# sync
 
-`sync` 命令负责维护 `.vscode/api-config.json` 的 `exportIndex` 部分：
+`sync` 干两件事：
+1. 执行 `api-config.json` 的 `pipelines`（文件转换管道）
+2. 扫描目录填充 `exportIndex` 各组路径
 
-- 清理**已不存在**的路径
-- 对**空数组**的组自动**发现**并填充
-- 跑 `pipelines`（如果有）
-
-## 两类组：约定名组 vs 路径形式组
-
-`exportIndex.includes` 里的项分两种，sync 填充方式不同：
-
-| 类型 | 形态 | 例 |
-|------|------|----|
-| **约定名组** | 单个单词（`utils` / `hooks`） | `"utils": ["src/utils", "packages/contract/src/utils"]` |
-| **路径形式组** | 含 `/` 或以 `.` 开头 | `"packages/logixlysia/src": ["packages/logixlysia/src/utils", "packages/logixlysia/src/foo.ts", ...]` |
-
-判断函数（实现细节）：
-
-```ts
-function isPathLike(s: string): boolean {
-  return s.includes("/") || s.includes("\\") || s.startsWith(".");
-}
-```
-
-## 约定名组
-
-`utils`、`hooks`、`helpers` 等名字命中硬编码白名单 `BARREL_TARGETS`：
-
-```ts
-const BARREL_TARGETS = new Set([
-  "utils", "hooks", "helpers", "constants", "types",
-  "schemas", "validators", "middleware",
-]);
-```
-
-sync 会**全项目递归**扫所有目录，把名字命中白名单的目录路径塞进对应组：
+## pipelines
 
 ```json
-{
-  "exportIndex": {
-    "includes": ["utils"],
-    "utils": [
-      "src/utils",                           // 单仓
-      "packages/contract/src/utils",         // monorepo
-      "apps/admin/src/utils"                 // monorepo 多 app
-    ]
-  }
-}
+"pipelines": [
+  [
+    { "type": "select", "glob": "**/*.tbschema.ts" },
+    { "type": "prepend", "content": "/** biome-ignore-all lint/style/useNamingConvention: 契约文件固定约束 */" }
+  ]
+]
 ```
 
-**典型场景**：单仓 / monorepo 中多处 `utils` 目录想一起导出。
+每条管道是步骤数组，按顺序执行：
+- `select`（`glob`）— 选文件
+- `prepend`（`content`）— 文件头插入内容
+- `append`（`content`）— 文件尾追加内容
+- `replace`（`from` / `to`）— 文本替换
 
-barrel 处理约定名组时，**每个数组项作为独立 rootDir**——每个路径各自生成组级 `index.ts`（位置在 `src/utils/index.ts`、`packages/contract/src/utils/index.ts` 等）。
+目前 `init` 默认给 `*.tbschema.ts` 加 biome-ignore 头（TypeBox 契约里的 `XxxTBSchema` 大写无法绕过 lint）。
 
-## 路径形式组
+## exportIndex 填充
 
-组名直接是路径（一般是 CLI 库的 `src/` 根目录），sync **递归扫描**组名下所有有内容的子目录（任意深度），加上组根的散 `.ts` 文件，填进数组：
+`sync` 遍历 `includes` 数组，按组名分两类处理：
 
-```jsonc
-{
-  "exportIndex": {
-    "includes": ["packages/logixlysia/src"],
-    "packages/logixlysia/src": [
-      "packages/logixlysia/src/foo.ts",      // 组根散文件
-      "packages/logixlysia/src/hooks",       // 一级子目录
-      "packages/logixlysia/src/utils",       // 一级子目录
-      "packages/logixlysia/src/utils/nested" // 二级子目录（递归到底）
-    ]
-  }
-}
-```
+### 约定名组（utils / hooks / helpers / ...）
 
-**典型场景**：CLI 库（如 `logixlysia`）的 `src/` 根目录希望**只写一行 `includes` 就自动展开所有子目录**——不用手工枚举每个子项。
+- 读 `current[name]`（已显式配置的路径）
+- 若非空：保留 `!` 排除项 + 移除已不存在的目录
+- 若为空：用 `scanBarrelDirs` 自动扫所有同名目录
 
-### sync 行为
+`scanBarrelDirs` 在项目根下递归找 `utils/` / `hooks/` 等 BARREL_TARGETS 目录（见 [`src/commands/sync.ts`](../src/commands/sync.ts) 的 `BARREL_TARGETS`），跳过 `SKIP_DIRS`。
 
-| 情况 | 行为 |
-|------|------|
-| 数组为空 | **递归**扫描：组根散文件 + 每层有内容的子目录，全部填入 |
-| 数组非空 | 尊重你的清单；只过滤掉不存在的非 `!` 路径；`!` 排除项原样保留 |
-| 路径不存在 | warn + 数组保持空（不报错） |
+### 路径形式组（含 `/` 或以 `.` 开头）
 
-递归规则：
-- **子目录**：只在"本层有散 `.ts` 文件 **或** 任一后代有内容"时才纳入
-- **散 `.ts` 文件**：只在**组根那一层**纳入；深层散文件归所属子目录的 barrel 管（不上升到组根）
-- **黑名单**：`SKIP_DIRS`（`node_modules` / `dist` / `.vscode` / `.git` / `scripts` / `.next` / `.agengt` / `.claude` / `.lingma` / `turbo`）全程生效
+- 读 `current[name]`（已显式配置的路径列表）
+- 若非空：保留 `!` 排除项 + 移除已不存在的目录
+- 若为空 + 路径存在：用 `scanPathGroupChildren` 递归填**所有有内容的子目录 + 组根散 .ts 文件**
 
-### barrel 行为
+`scanPathGroupChildren` 的输出是该路径下：
+- 一级子目录里**至少有一个 .ts 文件**或**非空子目录**的路径
+- 组根直接放的 `.ts` 散文件
 
-barrel 不依赖 sync 先跑——直接对**空数组的路径形式组**也自动递归展开（用同一份共享扫描工具，行为完全一致）。
+> **孙级不直接出现**：`./x/sub/sub-sub/` 不会出现在 `["x"]` 的子项里，而是经 `./x/sub/index.ts` 间接暴露。
 
-barrel 处理时按**深度倒序**写各层 barrel（深的先），然后聚合时父级 barrel 通过 `from "./subdir"` 把子目录 barrel 链入，实现"递归级联"：
+## 移除失效目录
 
-```
-src/index.ts                  ← 父级汇总：散文件 + 一级子目录(孙级不直接出现)
-src/utils/index.ts            ← 中间层：re-export ./nested（级联）
-src/utils/nested/index.ts     ← 叶层：聚合 nested/ 下的散文件
-```
+不管约定名还是路径形式组，`sync` 都校验每个非 `!` 项 `existsSync`：
+- 已存在 → 保留
+- 不存在 → 移除
 
-**层级隔离**：父级 `src/index.ts` 只对一级子目录写 `from "./xxx"` 行；孙级目录路径不直接出现。孙级符号经中间层 `foo/index.ts` 的级联 re-export 间接抵达组根——既保留 `import { deep } from "@/src"` 这种深度导入能力，又不会因 `from "./foo"` + `from "./foo/sub"` 两行同名符号重复导出。
-
-这样 `import { x } from "@/contract"` / `from "@/contract/utils"` / `from "@/contract/utils/nested"` 三种深度都能用。
-
-### 与约定名组的关键区别
-
-| 维度 | 约定名组 | 路径形式组 |
-|------|---------|-----------|
-| 数组里能填几个 | 多个（每处匹配目录一个） | 一个组名下的所有子内容（子目录 + 散文件） |
-| sync 填的依据 | 全项目扫名字匹配 | **递归**扫组名路径下所有有内容的子目录 + 组根散文件 |
-| barrel 处理 | 每个数组项**独立**生成组级 `index.ts` | 以**组名**作为唯一 rootDir，**级联**聚合到每一层（子目录的 barrel re-export 进父级） |
-| 空数组触发 | warn（没有组名路径可扫） | **自动递归展开**——barrel 不依赖 sync 先跑 |
-| 多仓可重复 | ✅（每 app 一个 utils 各填一项） | ❌（路径就是身份，一处一个） |
-| 散文件支持 | ❌（约定名组是目录白名单） | ✅（组根散文件自动 re-export） |
-
-## 失效路径清理
-
-sync 跑时，对每个 `existingPaths` 非空的组，会 `existsSync` 校验每项，**不存在的会移除**：
-
-```jsonc
-// 之前
-{ "utils": ["src/utils", "apps/api/src/utils"] }
-// 删了 apps/api/src/utils 后跑 sync：
-{ "utils": ["src/utils"] }
-```
-
-日志会提示：
-
-```
-utils: 保留 1 个路径，移除 1 个失效路径
-```
-
-## 边界情况
-
-| 配置 | sync 行为 |
-|------|----------|
-| `includes` 空 | 跳过整个 sync（warn） |
-| 约定名组空数组 | 用全项目扫描结果填充；扫不到则保持空 |
-| 路径形式组空数组 | **递归**扫组名路径下所有有内容的子目录 + 组根散文件填入 |
-| 路径形式组路径不存在 | warn + 数组保持空（不报错） |
-| 路径形式组路径下无任何内容 | 数组保持空 |
-
-## 与 barrel 的关系
-
-`barrel` 不依赖 `sync` 先跑——空数组的路径形式组 barrel 也会自动递归展开。两者共享同一份 `scanPathGroupChildren` 工具，行为完全一致：
+## 完整 run
 
 ```bash
-api-gen sync      # 维护配置（把扫描结果写回 api-config.json，方便审计）
-api-gen barrel    # 生成 index.ts（不依赖 sync，可以单独跑）
+api-gen sync
+# 1. 执行 pipelines(每个文件按管道步骤处理)
+# 2. 更新 exportIndex(填充 / 清理)
 ```
-
-`barrel` 还有自己的语义（`!` 排除路径、单组运行 `--group`、手动维护保护、级联 barrel），见 `docs/barrel-export.md`。

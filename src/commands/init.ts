@@ -12,11 +12,13 @@ const DEFAULT_CONFIG: ApiConfig = {
     baseUrl: "https://api.deepseek.com",
   },
   exportIndex: {
-    includes: ["utils"],
+    includes: ["utils", "packages/contract/src/utils/constants/definitions"],
+    // 路径形式组,空数组 = barrel 时自动递归展开
+    "packages/contract/src/utils/constants/definitions": [],
   },
   pipelines: [
     [
-      { type: "select", glob: "**/*.contract.ts" },
+      { type: "select", glob: "**/*.tbschema.ts" },
       { type: "prepend", content: "/** biome-ignore-all lint/style/useNamingConvention: 契约文件固定约束 */" },
     ],
   ],
@@ -39,7 +41,8 @@ export async function initCommand(): Promise<void> {
   writeFileSync(configPath, JSON.stringify(DEFAULT_CONFIG, null, 2), "utf-8");
 
   pail.success(`CLI 脚本配置已保存至 ${configPath}`);
-  pail.info("请编辑 ai.apiKey 后使用，然后运行 `api-gen sync` 填充 barrel 导出路径");
+  pail.info("请编辑 ai.apiKey 后使用，然后运行 `api-gen info` 探测项目结构");
+  pail.info("接着 `api-gen sync` 填充 barrel 导出路径(utils + constants/definitions)");
 }
 
 export default initCommand;

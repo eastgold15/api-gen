@@ -7,7 +7,7 @@ import { createTable } from "@visulima/tabular";
 import inquirer from "inquirer";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { detectLayout } from "../structure/detector.js";
-import type { ApiGenRootConfig } from "../types/api-gen.json.js";
+import type { ApiGenRootConfig, AppLayout, AppType } from "../types/api-gen.json.js";
 import { initDefaultPromptTemplate } from "../utils/prompt-render.js";
 
 // ---------------------------------------------------------------------------
@@ -26,6 +26,19 @@ function fmtList(items: string[], maxInline = 8): string {
       ? chalk.dim(` … 还有 ${items.length - maxInline} 项`)
       : "";
   return chalk.green(head.join(", ")) + tail;
+}
+
+function fmtAppType(type: AppType): string {
+  switch (type) {
+    case "b2b-api":
+      return chalk.green(type);
+    case "web":
+      return chalk.cyan(type);
+    case "b2b-admin":
+      return chalk.yellow(type);
+    default:
+      return chalk.gray(type);
+  }
 }
 
 function pathRelativeName(absPath: string): string {
@@ -51,10 +64,12 @@ function printLayout(config: ApiGenRootConfig): void {
     const commonTable = createTable();
     commonTable.setHeaders([chalk.bold("公共层"), chalk.bold("值")]);
     commonTable.addRow(["rootDir", fmtVal(c.rootDir)]);
-    commonTable.addRow(["schemaFiles", fmtList(c.schemaFiles.map(f => pathRelativeName(f)))]);
+    commonTable.addRow(["dbschemaFiles", fmtList(c.dbschemaFiles.map(f => pathRelativeName(f)))]);
+    commonTable.addRow(["tbschemaFiles", fmtList(c.tbschemaFiles.map(f => pathRelativeName(f)))]);
     commonTable.addRow(["relationFiles", fmtList(c.relationFiles.map(f => pathRelativeName(f)))]);
-    commonTable.addRow(["contractFiles", fmtList(c.contractFiles.map(f => pathRelativeName(f)))]);
-    commonTable.addRow(["dtoDir", fmtVal(c.dtoDir)]);
+    commonTable.addRow(["reposFiles", fmtList(c.reposFiles.map(f => pathRelativeName(f)))]);
+    commonTable.addRow(["tbschemaRoot", fmtVal(c.tbschemaRoot)]);
+    commonTable.addRow(["tbschemaRawDir", fmtVal(c.tbschemaRawDir)]);
     commonTable.addRow(["existingSchemas", fmtList(c.existingSchemas)]);
     commonTable.addRow(["existingContractModules", fmtList(c.existingContractModules)]);
     console.log(commonTable.toString());
@@ -62,13 +77,18 @@ function printLayout(config: ApiGenRootConfig): void {
 
   // 3. 应用列表表
   const appsTable = createTable();
-  appsTable.setHeaders([chalk.bold("应用"), chalk.bold("后端根目录"), chalk.bold("控制器目录"), chalk.bold("服务端目录")]);
+  appsTable.setHeaders([
+    chalk.bold("应用"),
+    chalk.bold("类型"),
+    chalk.bold("modules 目录"),
+    chalk.bold("聚合入口"),
+  ]);
   for (const app of config.apps) {
     appsTable.addRow([
       chalk.cyan(app.appName),
-      fmtVal(app.backRoot),
-      fmtVal(app.controllersDir),
-      fmtVal(app.serviceDir),
+      fmtAppType(app.appType),
+      fmtVal(app.modulesDir),
+      fmtVal(app.aggregateIndex),
     ]);
   }
   console.log(appsTable.toString());
@@ -102,6 +122,42 @@ async function askConfirm(message: string): Promise<boolean> {
   return ok;
 }
 
+const APP_TYPE_CHOICES: { name: string; value: AppType }[] = [
+  { name: "b2b-api  (Elysia 后台 API, modules 在 src/modules/)",        value: "b2b-api" },
+  { name: "web      (Next + Elysia 用户站, modules 在 src/server/)",     value: "web" },
+  { name: "b2b-admin(Next 后台前端, 无 modules, 只有 hooks/api/)",       value: "b2b-admin" },
+  { name: "frontend (其它纯前端, 有 hooks/api 但非 Next 套件)",          value: "frontend" },
+];
+
+/** 给每个 app 单独确认 appType,默认值是 detector 探测结果;用户可改 */
+async function askAppType(apps: AppLayout[]): Promise<AppLayout[]> {
+  const im = pail.getInteractiveManager();
+  if (im) im.suspend("stdout");
+
+  try {
+    const result: AppLayout[] = [];
+    for (const app of apps) {
+      const { choice } = await inquirer.prompt([
+        {
+          type: "select",
+          name: "choice",
+          message: `App "${chalk.cyan(app.appName)}" 的类型? (detector 探测: ${fmtAppType(app.appType)})`,
+          choices: [...APP_TYPE_CHOICES, { name: chalk.dim("— 跳过,丢弃该 app —"), value: "__skip__" }],
+          default: app.appType,
+        },
+      ]);
+      if (choice === "__skip__") {
+        pail.warn(`  已丢弃 app: ${chalk.dim(app.appName)}`);
+        continue;
+      }
+      result.push({ ...app, appType: choice });
+    }
+    return result;
+  } finally {
+    if (im) im.resume("stdout");
+  }
+}
+
 // ---------------------------------------------------------------------------
 // info 主命令逻辑（生成 api-gen.json，给 AI 看的项目结构）
 // ---------------------------------------------------------------------------
@@ -115,10 +171,18 @@ export async function infoCommand(directory?: string): Promise<void> {
 
   printLayout(config);
 
+  // 第一轮:确认是否保存
   const confirmed = await askConfirm("是否将检测到的项目结构保存到 .vscode/api-gen.json？");
 
   if (!confirmed) {
     pail.warn("\n  操作已取消。");
+    return;
+  }
+
+  // 第二轮:逐个 app 确认 appType(detector 默认值可改)
+  const finalApps = await askAppType(config.apps);
+  if (finalApps.length === 0) {
+    pail.warn("\n  所有 app 都被丢弃,操作取消。");
     return;
   }
 
@@ -129,7 +193,7 @@ export async function infoCommand(directory?: string): Promise<void> {
     isMonorepo: config.isMonorepo,
     structureTree: config.structureTree,
     common: config.common,
-    apps: config.apps,
+    apps: finalApps,
   };
 
   ensureDirSync(dirname(configPath));
@@ -148,10 +212,10 @@ export async function infoCommand(directory?: string): Promise<void> {
   if (config.common) {
     summary.push(`公共合约层包含 ${config.common.existingSchemas.length} 张表、${config.common.existingContractModules.length} 个合约`);
   }
-  for (const app of config.apps) {
-    const parts = [`应用 "${app.appName}"`];
-    if (app.controllersDir) parts.push("有控制器");
-    if (app.serviceDir) parts.push("有服务端");
+  for (const app of finalApps) {
+    const parts = [`应用 "${app.appName}" (${app.appType})`];
+    if (app.modulesDir) parts.push("有 modules");
+    if (app.aggregateIndex) parts.push("有聚合入口");
     summary.push(parts.join("，"));
   }
 

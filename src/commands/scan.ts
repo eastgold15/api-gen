@@ -14,7 +14,10 @@ import type { ApiGenRootConfig, AppLayout } from "../types/api-gen.json.js";
 /** 单个应用的扫描结果 */
 export interface AppRouteGroup {
   appName: string;
-  backRoot: string;
+  appType: string;
+  appRoot: string;
+  modulesDir: string | null;
+  aggregateIndex: string | null;
   controllersDir: string | null;
   serviceDir: string | null;
   controllers: ControllerSpec[];
@@ -91,9 +94,9 @@ function buildProjectContext(config: ApiGenRootConfig): ProjectContext {
   let moduleNames: string[] = [];
 
   if (config.common) {
-    schemaFileList = config.common.schemaFiles;
+    schemaFileList = config.common.dbschemaFiles;
     relationFileList = config.common.relationFiles;
-    contractFileList = config.common.contractFiles;
+    contractFileList = config.common.tbschemaFiles;
     tableNames = config.common.existingSchemas;
     moduleNames = config.common.existingContractModules;
   }
@@ -121,9 +124,12 @@ function buildProjectContext(config: ApiGenRootConfig): ProjectContext {
 // ---------------------------------------------------------------------------
 
 function scanApp(config: ApiGenRootConfig, app: AppLayout, cwd: string): AppRouteGroup | null {
-  if (!app.controllersDir) return null;
+  // b2b-api → modulesDir;web → modulesDir(也在 src/server/modules 下);
+  // 旧字段 controllersDir 仍保留兼容(直接指向 modulesDir 同义)
+  const scanDir = app.modulesDir ?? app.controllersDir;
+  if (!scanDir) return null;
 
-  const controllersDir = resolve(cwd, app.controllersDir);
+  const controllersDir = resolve(cwd, scanDir);
   if (!existsSync(controllersDir)) return null;
 
   const controllers = scanAllControllers(controllersDir);
@@ -140,7 +146,10 @@ function scanApp(config: ApiGenRootConfig, app: AppLayout, cwd: string): AppRout
 
   return {
     appName: app.appName,
-    backRoot: app.backRoot,
+    appType: app.appType,
+    appRoot: app.appRoot,
+    modulesDir: app.modulesDir,
+    aggregateIndex: app.aggregateIndex,
     controllersDir: app.controllersDir,
     serviceDir: app.serviceDir,
     controllers,

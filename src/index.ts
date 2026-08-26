@@ -6,6 +6,8 @@ import chalk from "@visulima/colorize";
 import archive from "./commands/archive.js";
 import barrel from "./commands/barrel.js";
 import generate from "./commands/generate.js";
+import generateHook from "./commands/generate-hook.js";
+import generateTbschema from "./commands/generate-tbschema.js";
 import info from "./commands/info.js";
 import init from "./commands/init.js";
 import link from "./commands/link.js";
@@ -102,10 +104,42 @@ cli.addCommand({
 
 cli.addCommand({
   name: "raw",
-  description: "解析 drizzle schema，自动生成 dto/raw/*.raw.ts 基础字段定义",
+  description: "从 *.dbschema.ts 的 pgTable 派生出 packages/contract/src/tbschema/raw/<name>.dbschema.raw.ts",
   execute: async () => {
     await raw();
     console.log(chalk.green("Raw DTO 文件生成完成。"));
+  },
+});
+
+cli.addCommand({
+  name: "gen-tbschema",
+  description: "从 dbschema + raw 派生 *.tbschema.ts 骨架(需先跑 api-gen raw)",
+  options: [
+    { name: "domain", alias: "d", type: String, description: "指定单个 domain" },
+    { name: "force", type: Boolean, description: "覆盖已有 tbschema 文件" },
+  ],
+  execute: async ({ options }: Toolbox) => {
+    await generateTbschema({
+      domain: options.domain as string | undefined,
+      force: options.force as boolean | undefined,
+    });
+    console.log(chalk.green("tbschema 骨架生成完成。"));
+  },
+});
+
+cli.addCommand({
+  name: "gen-hook",
+  description: "从 b2b-api controller 路由生成 Eden-TanStack-Query React hook 文件",
+  options: [
+    { name: "domain", alias: "d", type: String, description: "指定单个 domain" },
+    { name: "target", alias: "t", type: String, description: "web | b2b-admin (默认两个都生成)" },
+  ],
+  execute: async ({ options }: Toolbox) => {
+    await generateHook({
+      domain: options.domain as string | undefined,
+      target: options.target as "web" | "b2b-admin" | undefined,
+    });
+    console.log(chalk.green("hook 文件生成完成。"));
   },
 });
 
@@ -143,10 +177,10 @@ cli.addCommand({
 
 cli.addCommand({
   name: "link",
-  description: "自动生成 controllers/index.ts，统一导出所有控制器",
+  description: "按 appType 生成模块聚合入口(b2b-api→applyAllModules, web→applyAllControllers)",
   execute: async () => {
     await link();
-    console.log(chalk.green("控制器链接完成。"));
+    console.log(chalk.green("模块/控制器聚合入口生成完成。"));
   },
 });
 

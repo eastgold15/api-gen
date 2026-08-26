@@ -2,8 +2,12 @@ import { readdirSync, existsSync } from "node:fs";
 import { resolve, join, basename } from "@visulima/path";
 
 // 业务分层后缀
-export type Layer = "controller" | "service" | "schema" | "relation" | "contract";
-export const LAYERS: Layer[] = ["controller", "service", "schema", "relation", "contract"];
+// - controller / service / repos: 业务代码
+// - dbschema:                  drizzle 表定义
+// - tbschema:                  typebox 契约(导出 XxxTBSchema 与 XxxContract)
+// - relation:                  drizzle 关系定义
+export type Layer = "controller" | "service" | "repos" | "dbschema" | "tbschema" | "relation";
+export const LAYERS: Layer[] = ["controller", "service", "repos", "dbschema", "tbschema", "relation"];
 export const SKIP_DIRS = new Set(["node_modules", "dist", ".vscode", ".git", "scripts", ".next", ".agengt", ".claude", ".lingma", "turbo"]);
 
 type DirInfo = {
@@ -16,7 +20,7 @@ type DirInfo = {
 function scanDirTree(rootAbs: string, rootRel: string): DirInfo {
   const dir: DirInfo = {
     relative: rootRel,
-    layers: { controller: [], service: [], schema: [], relation: [], contract: [] },
+    layers: { controller: [], service: [], repos: [], dbschema: [], tbschema: [], relation: [] },
     children: [],
   };
   const entries = readdirSync(rootAbs, { withFileTypes: true });

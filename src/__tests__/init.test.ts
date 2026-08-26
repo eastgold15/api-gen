@@ -3,200 +3,152 @@ import { mkdirSync, writeFileSync, existsSync, rmSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { detectLayout } from "../structure/detector.js";
 
-const TMP_ROOT = resolve(import.meta.dir, "../../.test-tmp");
+const FIXTURE = resolve(import.meta.dir, "../../fixtures/tradeflow");
+const TMP_ROOT = resolve(import.meta.dir, "../../.test-tmp/detector");
 
 // -----------------------------------------------------------------------
-// 测试：单仓库结构
+// 1. tradeflow 真实 fixture:三个 app + common
 // -----------------------------------------------------------------------
-describe("单仓库 (single-app)", () => {
+describe("tradeflow fixture (三 app 布局)", () => {
   beforeAll(() => {
     if (existsSync(TMP_ROOT)) rmSync(TMP_ROOT, { recursive: true });
     mkdirSync(TMP_ROOT, { recursive: true });
-    writeFileSync(join(TMP_ROOT, "package.json"), JSON.stringify({ name: "test-project" }), "utf-8");
-
-    // 业务文件直接在 src/ 下按分层后缀放
-    mkdirSync(join(TMP_ROOT, "src"), { recursive: true });
-    writeFileSync(join(TMP_ROOT, "src/user.controller.ts"), `
-import { Elysia } from "elysia";
-export const user = new Elysia({ prefix: "/users" })
-  .get("/", () => "list", { detail: { summary: "用户列表", tags: ["user"] } });
-`, "utf-8");
-    writeFileSync(join(TMP_ROOT, "src/user.service.ts"), "// 业务逻辑", "utf-8");
+    // 用 symlink 让 fixture 真实可用
+    // (Bun 测试沙箱对真实软链支持 OK;若不行,改为 cp -r)
   });
 
   afterAll(() => {
     if (existsSync(TMP_ROOT)) rmSync(TMP_ROOT, { recursive: true });
   });
 
-  it("识别项目名称", () => {
-    expect(detectLayout(TMP_ROOT).projectName).toBe("test-project");
+  it("isMonorepo=true,projectName=tradeflow", () => {
+    const config = detectLayout(FIXTURE);
+    expect(config.projectName).toBe("tradeflow");
+    expect(config.isMonorepo).toBe(true);
   });
 
-  it("判断为单仓库", () => {
-    expect(detectLayout(TMP_ROOT).isMonorepo).toBe(false);
+  it("common 公共合约层识别 dbschema / tbschema / relation / repos", () => {
+    const c = detectLayout(FIXTURE).common;
+    expect(c).not.toBeNull();
+    expect(c!.dbschemaFiles.length).toBeGreaterThan(0);
+    expect(c!.dbschemaFiles[0]).toMatch(/\.dbschema\.ts$/);
+    expect(c!.tbschemaFiles).toBeDefined();
+    expect(c!.tbschemaRoot).toMatch(/tbschema$/);
+    expect(c!.tbschemaRawDir).toMatch(/tbschema\/raw$/);
+    expect(c!.existingSchemas).toContain("siteTable");
+    expect(c!.existingSchemas).toContain("customerTable");
+    expect(c!.existingSchemas).toContain("heroCardTable");
   });
 
-  it("生成一个 main 应用", () => {
-    const config = detectLayout(TMP_ROOT);
-    expect(config.apps.length).toBe(1);
-    expect(config.apps[0]!.appName).toBe("main");
+  it("三个 app 全部识别(b2b-api/web/b2b-admin)", () => {
+    const apps = detectLayout(FIXTURE).apps;
+    const names = apps.map((a) => a.appName).sort();
+    expect(names).toEqual(["b2b-admin", "b2b-api", "web"]);
   });
 
-  it("识别 controller / server 目录", () => {
-    const config = detectLayout(TMP_ROOT);
-    expect(config.apps[0]!.controllersDir).toContain("src");
-    expect(config.apps[0]!.serviceDir).toContain("src");
-    expect(config.apps[0]!.backRoot).toContain("src");
+  it("b2b-api modules 在 src/modules/,appType=b2b-api", () => {
+    const a = detectLayout(FIXTURE).apps.find((x) => x.appName === "b2b-api");
+    expect(a).toBeDefined();
+    expect(a!.appType).toBe("b2b-api");
+    expect(a!.modulesDir).toMatch(/src\/modules$/);
+    expect(a!.aggregateIndex).toMatch(/src\/modules\/index\.ts$/);
   });
 
-  it("structureTree 包含分层文件 (controller/server)", () => {
-    const tree = detectLayout(TMP_ROOT).structureTree;
-    expect(tree).toContain("user.controller.ts");
-    expect(tree).toContain("user.service.ts");
+  it("web modules 在 src/server/modules/,appType=web", () => {
+    const a = detectLayout(FIXTURE).apps.find((x) => x.appName === "web");
+    expect(a).toBeDefined();
+    expect(a!.appType).toBe("web");
+    expect(a!.modulesDir).toMatch(/src\/server\/modules$/);
+    expect(a!.aggregateIndex).toMatch(/src\/server\/index\.ts$/);
   });
 
-  it("common 层为 null", () => {
-    expect(detectLayout(TMP_ROOT).common).toBeNull();
+  it("b2b-admin 无 modules(只有 hooks/api),appType=b2b-admin", () => {
+    const a = detectLayout(FIXTURE).apps.find((x) => x.appName === "b2b-admin");
+    expect(a).toBeDefined();
+    expect(a!.appType).toBe("b2b-admin");
+    expect(a!.modulesDir).toBeNull();
+    expect(a!.aggregateIndex).toBeNull();
+  });
+
+  it("structureTree 包含三个 app 名", () => {
+    const tree = detectLayout(FIXTURE).structureTree;
+    expect(tree).toContain("b2b-api");
+    expect(tree).toContain("web");
+    expect(tree).toContain("b2b-admin");
   });
 });
 
 // -----------------------------------------------------------------------
-// 测试：Monorepo 结构
+// 2. inline:inline b2b-api 单仓(只有 src/modules/<d>/<d>.controller.ts)
 // -----------------------------------------------------------------------
-describe("Monorepo", () => {
+describe("inline b2b-api(单仓 modules 形式)", () => {
   beforeAll(() => {
     if (existsSync(TMP_ROOT)) rmSync(TMP_ROOT, { recursive: true });
     mkdirSync(TMP_ROOT, { recursive: true });
-    writeFileSync(join(TMP_ROOT, "package.json"), JSON.stringify({ name: "mono-project" }), "utf-8");
-
-    // packages/contract 公共层
-    mkdirSync(join(TMP_ROOT, "packages/contract"), { recursive: true });
-    writeFileSync(join(TMP_ROOT, "packages/contract/user.schema.ts"), 'export const userTable = {};', "utf-8");
-    writeFileSync(join(TMP_ROOT, "packages/contract/user.relation.ts"), '', "utf-8");
-    writeFileSync(join(TMP_ROOT, "packages/contract/user.contract.ts"), '', "utf-8");
-
-    // apps/api 应用
-    mkdirSync(join(TMP_ROOT, "apps/api/src"), { recursive: true });
-    writeFileSync(join(TMP_ROOT, "apps/api/src/goods.controller.ts"), `
-import { Elysia } from "elysia";
-export const goods = new Elysia({ prefix: "/goods" })
-  .get("/", () => "list", { detail: { summary: "商品列表", tags: ["goods"] } });
-`, "utf-8");
-    writeFileSync(join(TMP_ROOT, "apps/api/src/goods.service.ts"), '', "utf-8");
+    writeFileSync(join(TMP_ROOT, "package.json"), JSON.stringify({ name: "inline-b2b" }));
+    mkdirSync(join(TMP_ROOT, "src/modules/site"), { recursive: true });
+    writeFileSync(
+      join(TMP_ROOT, "src/modules/site/site.controller.ts"),
+      `import { Elysia } from "elysia";
+export const siteController = new Elysia({ prefix: "/site" }).get("/", () => ({}));`,
+    );
   });
-
   afterAll(() => {
     if (existsSync(TMP_ROOT)) rmSync(TMP_ROOT, { recursive: true });
   });
 
-  it("识别为 monorepo", () => {
-    expect(detectLayout(TMP_ROOT).isMonorepo).toBe(true);
-  });
-
-  it("识别 common 公共层", () => {
-    const config = detectLayout(TMP_ROOT);
-    expect(config.common).not.toBeNull();
-    expect(config.common!.schemaFiles.length).toBe(1);
-    expect(config.common!.contractFiles.length).toBe(1);
-    expect(config.common!.existingSchemas).toContain("userTable");
-  });
-
-  it("识别 apps/api 应用", () => {
-    const config = detectLayout(TMP_ROOT);
-    expect(config.apps.length).toBe(1);
-    expect(config.apps[0]!.appName).toBe("api");
-    expect(config.apps[0]!.backRoot).toContain("src");
-  });
-
-  it("structureTree 反映 packages + apps 层级", () => {
-    const tree = detectLayout(TMP_ROOT).structureTree;
-    expect(tree).toContain("packages");
-    expect(tree).toContain("contract");
-    expect(tree).toContain("apps");
-    expect(tree).toContain("goods.controller.ts");
+  it("modulesDir 指向 src/modules", () => {
+    const a = detectLayout(TMP_ROOT).apps[0]!;
+    expect(a.modulesDir).toMatch(/src\/modules$/);
+    expect(a.appType).toBe("b2b-api");
   });
 });
 
 // -----------------------------------------------------------------------
-// 测试：Monorepo 中 controller 在 server/ 目录（apps/web/server/）
+// 3. inline:inline web(只有 src/server/modules/<d>/<d>.controller.ts)
 // -----------------------------------------------------------------------
-describe("Monorepo with server/ path", () => {
+describe("inline web(单仓 server modules 形式)", () => {
   beforeAll(() => {
     if (existsSync(TMP_ROOT)) rmSync(TMP_ROOT, { recursive: true });
     mkdirSync(TMP_ROOT, { recursive: true });
-    writeFileSync(join(TMP_ROOT, "package.json"), JSON.stringify({ name: "web-project" }), "utf-8");
-
-    // controller 放在 apps/web/server/controllers/ 而非 src/ 下
-    mkdirSync(join(TMP_ROOT, "apps/web/server/controllers"), { recursive: true });
-    writeFileSync(join(TMP_ROOT, "apps/web/server/controllers/user.controller.ts"), `
-import { Elysia } from "elysia";
-export const userController = new Elysia({ prefix: "/users" })
-  .get("/", () => "list");
-`, "utf-8");
-    writeFileSync(join(TMP_ROOT, "apps/web/server/user.service.ts"), "// service", "utf-8");
-
-    // 另一个 app 用 src/ 路径（b2b-api 风格）
-    mkdirSync(join(TMP_ROOT, "apps/b2b-api/src/server/controllers"), { recursive: true });
-    writeFileSync(join(TMP_ROOT, "apps/b2b-api/src/server/controllers/goods.controller.ts"), `
-import { Elysia } from "elysia";
-export const goodsController = new Elysia({ prefix: "/goods" })
-  .get("/", () => "list");
-`, "utf-8");
+    writeFileSync(join(TMP_ROOT, "package.json"), JSON.stringify({ name: "inline-web" }));
+    mkdirSync(join(TMP_ROOT, "src/server/modules/hero-card"), { recursive: true });
+    writeFileSync(
+      join(TMP_ROOT, "src/server/modules/hero-card/hero-card.controller.ts"),
+      `import { Elysia } from "elysia";
+export const heroCardController = new Elysia({ prefix: "/hero-card" }).get("/", () => ({}));`,
+    );
   });
-
   afterAll(() => {
     if (existsSync(TMP_ROOT)) rmSync(TMP_ROOT, { recursive: true });
   });
 
-  it("识别 web 应用（server/ 目录下的 controller）", () => {
-    const config = detectLayout(TMP_ROOT);
-    const web = config.apps.find((a) => a.appName === "web");
-    expect(web).toBeDefined();
-    expect(web!.controllersDir).toContain("server");
-    expect(web!.controllersDir).toContain("controllers");
-    expect(web!.serviceDir).toContain("server");
-    expect(web!.backRoot).toContain("server");
-  });
-
-  it("识别 b2b-api 应用（src/server/ 目录下的 controller）", () => {
-    const config = detectLayout(TMP_ROOT);
-    const b2b = config.apps.find((a) => a.appName === "b2b-api");
-    expect(b2b).toBeDefined();
-    expect(b2b!.controllersDir).toContain("src");
-    expect(b2b!.controllersDir).toContain("controllers");
-    expect(b2b!.backRoot).toContain("src");
-  });
-
-  it("structureTree 同时反映两种路径", () => {
-    const tree = detectLayout(TMP_ROOT).structureTree;
-    expect(tree).toContain("user.controller.ts");
-    expect(tree).toContain("goods.controller.ts");
+  it("modulesDir 指向 src/server/modules,appType=web", () => {
+    const a = detectLayout(TMP_ROOT).apps[0]!;
+    expect(a.modulesDir).toMatch(/src\/server\/modules$/);
+    expect(a.appType).toBe("web");
+    expect(a.aggregateIndex).toMatch(/src\/server\/index\.ts$/);
   });
 });
+
+// -----------------------------------------------------------------------
+// 4. 空目录
 // -----------------------------------------------------------------------
 describe("空目录", () => {
   beforeAll(() => {
     if (existsSync(TMP_ROOT)) rmSync(TMP_ROOT, { recursive: true });
     mkdirSync(TMP_ROOT, { recursive: true });
   });
-
   afterAll(() => {
     if (existsSync(TMP_ROOT)) rmSync(TMP_ROOT, { recursive: true });
   });
 
   it("无 package.json 时以目录名作为项目名", () => {
-    const config = detectLayout(TMP_ROOT);
-    expect(config.projectName).toBe(".test-tmp");
+    expect(detectLayout(TMP_ROOT).projectName).toBe("detector");
   });
 
-  it("生成一个空应用 (无 controller/server)", () => {
-    const config = detectLayout(TMP_ROOT);
-    expect(config.apps.length).toBe(1);
-    expect(config.apps[0]!.controllersDir).toBeNull();
-    expect(config.apps[0]!.serviceDir).toBeNull();
-  });
-
-  it("structureTree 为 project-root", () => {
-    expect(detectLayout(TMP_ROOT).structureTree).toBe("project-root");
+  it("无 controller 时 app.modulesDir=null", () => {
+    const a = detectLayout(TMP_ROOT).apps[0]!;
+    expect(a.modulesDir).toBeNull();
   });
 });

@@ -1,6 +1,0 @@
-{
-  "name": "single-app",
-  "dependencies": {
-    "elysia": "^1.4.29"
-  }
-}
