@@ -1,139 +1,210 @@
 ---
 name: api-gen
-description: This skill should be used when working with the `api-gen` CLI tool — a barrel-export + Elysia scaffolding generator. Activates for any task involving regenerating `index.ts` barrel files in `packages/contract/src/utils/` (or similar nested layouts), running `api-gen init/sync/barrel`, or extending the tool itself. Source: /home/pori/Documents/GitHub/api-gen.
+description: This skill should be used when working with the `api-gen` CLI tool — a barrel-export + Elysia scaffolding generator for the Elysia + Drizzle + TypeBox + Eden-TanStack-Query stack. Activates for any task involving running `api-gen init/sync/info/scan/barrel/raw/gen-tbschema/link/gen-hook/generate/make-prompt`, regenerating `index.ts` barrel files, scaffolding tbschema / raw / hook files, or extending the tool itself. Source: /home/pori/Documents/GitHub/api-gen.
 ---
+
 # api-gen CLI 速通
 
 > **源仓库**:`/home/pori/Documents/GitHub/api-gen`(本机已 `npm link`,全局 `api-gen` 可用)
-> **完整文档**:`docs/barrel-export.md` / `docs/sync.md` / `docs/architecture.md`
-> **本项目当前用法**:**只用 `init` + `barrel`**(其他命令 `generate` / `make-prompt` 跟当前架构不符,禁止使用)
+> **完整文档**:`docs/`(按命令分文件,见 §7 索引)
+> **目标项目**:`tradeflow`(三 app + 公共合约包 + 路径形式组桶导出)
 
-## 决策树(从最常用到不常用)
+## 决策树 — 我要用哪个命令?
 
 ```
-我想生成 / 重新生成 index.ts 桶导出
-  ↓
-是「按目录全展开」?(想要递归级联 / 整组一次性处理)
-  ✅ → 路径形式组(下面 §1)
-  否 → 想要多个分散目录一起导出?
-         ✅ → 约定名组(下面 §2)
-         否 → 直接手写 index.ts,不用工具
+我想…
+  │
+  ├─ 首次接入 / 重新生成 .vscode/api-config.json     → init
+  ├─ 维护 exportIndex 路径清单(可跳)                → sync
+  ├─ 探测项目结构,生成 .vscode/api-gen.json          → info
+  ├─ 扫描现有路由,生成 .vscode/api-spec.json         → scan
+  ├─ 跑 AI 拼提示词 / 调 AI 生代码                  → make-prompt → generate
+  │
+  ├─ 生成 / 重新生成 index.ts 桶导出                → barrel
+  ├─ 从 *.dbschema.ts 派生 raw DTO                  → raw
+  ├─ 从 dbschema + raw 派生 *.tbschema.ts 骨架       → gen-tbschema
+  ├─ 生成模块聚合入口(b2b-api / web)               → link
+  └─ 从 controller 派生 Eden-TanStack-Query hook    → gen-hook
 ```
 
-## §1 路径形式组(最常用 — tradeflow 默认走这个)
-
-**核心写法:只在 `includes` 写路径字符串,数组留空。`barrel` 自动递归展开,不需要先跑 `sync`。**
-
-```jsonc
-// .vscode/api-config.json
-{
-  "exportIndex": {
-    "includes": [
-      "packages/contract/src/utils"   // ← 整个目录的根,一行搞定
-    ]
-  }
-}
-```
-
-执行:
+**tradeflow 完整流水线**(从空仓库到全部生成):
 
 ```bash
-api-gen barrel    # 一行命令,递归级联所有层(深到叶)的 index.ts
+api-gen init              # 1. 写 .vscode/api-config.json(exportIndex 默认带 drizzle 桶组)
+api-gen info              # 2. 探测结构 → .vscode/api-gen.json(逐 app 确认 appType)
+api-gen barrel            # 3. 生成 utils + drizzle + definitions 三组桶
+api-gen raw               # 4. 从 dbschema 派生 tbschema/raw/*.dbschema.raw.ts
+api-gen gen-tbschema      # 5. 派生 tbschema/*.tbschema.ts 骨架(可选 --domain / --force)
+api-gen link              # 6. b2b-api → applyAllModules;web → applyAllControllers
+api-gen gen-hook          # 7. b2b-api controller → web/b2b-admin use-*.ts hook
 ```
 
-**为什么不用 `sync`?** 路径形式组 + 空数组时,`barrel` 直接调 `scanPathGroupChildren` 递归扫描,行为跟 `sync` 完全一致。`sync` 只是把结果**写回** `api-config.json`(方便审计),`barrel` 不依赖它。
+## §1 关键设计 — 配置驱动
 
-**级联规则**(`docs/sync.md` 关键段):
+工具**不写死路径**。所有行为由两份配置决定:
 
-- 父级 `index.ts` 只对**一级子目录**写 `from "./xxx"`(孙级不直接出现,避免重复导出)
-- 孙级符号经中间层 `xxx/index.ts` 的 `from "./nested"` 间接抵达父级
-- 这样 `from "@/contract"` / `from "@/contract/utils"` / `from "@/contract/utils/definitions"` 三种深度都能 import
-- 严格按**深度倒序**写盘(子目录 barrel 先生成,父级才能 read 到)
+| 文件 | 谁写 | 读它做什么 |
+|------|------|-----------|
+| `.vscode/api-config.json` | `init` 写一次,手改 | AI 配置 + 桶导出组 + 工作流管道 + `edenPrefix` |
+| `.vscode/api-gen.json` | `info` 写一次,手改覆盖 appType | 项目结构 + AppType + 聚合入口位置 |
 
-## §2 约定名组(用单点路径显式列举)
+**AppType**(`.vscode/api-gen.json` 决定)控制 link / gen-hook 行为:
 
-**适用**:多个 app 都有同名目录(如每个 app 自己的 `utils/`),想集中导出。
+| appType | modules 位置 | link 输出 | 聚合函数 |
+|---------|-------------|----------|---------|
+| `b2b-api` | `src/modules/` | `src/modules/index.ts` | `applyAllModules` |
+| `web` | `src/server/modules/` | `src/server/index.ts` | `applyAllControllers` |
+| `b2b-admin` | (无) | — | 跳过 |
+| `frontend` | (无) | — | 跳过 |
+
+`info` 命令会自动识别默认值,**用户在交互确认时可覆盖**(也可手改 `api-gen.json`)。
+
+## §2 Eden Treaty 路径前缀 — edenPrefix
+
+`gen-hook` 拼 eden 链式访问的根段,默认 `""`(直接挂载,无版本号):
 
 ```jsonc
-{
-  "exportIndex": {
-    "includes": ["utils"],
-    "utils": [
-      "packages/contract/src/utils",
-      "apps/web/src/utils"
-    ]
-  }
-}
+// .vscode/api-config.json 或 api-gen.json
+{ "edenPrefix": "" }     // eden.<domain>.<path>.<method>(tradeflow 当前)
+{ "edenPrefix": "api" }  // eden.api.<domain>...(server.ts: prefix "/api")
+{ "edenPrefix": "api.v1" } // eden.api.v1.<domain>...(多版本)
 ```
 
-执行 `api-gen sync` 触发自动扫描后,`utils` 数组会**全项目递归**填上所有叫 `utils` 的目录。约定名组**每个数组项独立生成组级 `index.ts`**(不是级联)。
+必须与 `b2b-api/src/server.ts` 里 `new Elysia({ prefix })` 保持一致。缺省 = 无 prefix。
 
-## §3 排除某个子目录(`!` 前缀)
+## §3 桶导出 — barrel
+
+两类组,行为完全不同:
+
+**约定名组**(多个同名目录一起导出):
 
 ```jsonc
-{
-  "exportIndex": {
-    "includes": ["packages/contract/src/utils"],
-    "utils": [
-      "!packages/contract/src/utils/internal"
-    ]
-  }
-}
+{ "exportIndex": { "includes": ["utils"], "utils": ["packages/contract/src/utils"] } }
 ```
 
-## §4 首次引导 / 重置
+**路径形式组**(整个目录一次性递归,**最常用**):
+
+```jsonc
+{ "exportIndex": { "includes": ["packages/contract/src/utils"], "packages/contract/src/utils": [] } }
+```
+
+空数组 = barrel 时自动递归展开,不需要先跑 `sync`。
+
+| 参数 | 用途 |
+|------|------|
+| `--group <name>` | 只处理某组 |
+| `--dry-run` | 预览不落盘 |
+| `--lib` | 仅导出 `@public` 标记的符号(库入口用) |
+
+**`init` 默认带的三组**(tradeflow):
+
+- `utils` — 工具函数
+- `packages/contract/src/drizzle` — dbschema 桶(`raw` 从这里 import,先 barrel 再 raw)
+- `packages/contract/src/utils/constants/definitions` — 3 层常量字典(路径形式组)
+
+## §4 raw — 桶路径优先,fallback 单文件
+
+`api-gen raw` 把 `*.dbschema.ts` 的 `pgTable` 派生成 `packages/contract/src/tbschema/raw/<name>.dbschema.raw.ts`。
+
+**import 路径策略**(通用模式 `resolveBarrelImport`):
+
+| drizzle/index.ts | raw 生成的 import |
+|------------------|-------------------|
+| 存在(已跑 barrel) | `import { siteTable } from "../../drizzle"` ← 桶路径 |
+| 不存在(没跑 barrel) | `import { siteTable } from "../../drizzle/table.dbschema"` ← fallback,会 warn 提示先跑 barrel |
+
+**所以正确顺序是 `barrel` → `raw`,**不要倒过来。
+
+## §5 gen-tbschema / gen-hook 关键参数
+
+**`gen-tbschema`**(从 dbschema + raw 派生 tbschema 骨架):
 
 ```bash
-api-gen init     # 生成 .vscode/api-config.json(覆盖 .ai / .pipelines 模板,exportIndex 仅含 includes: ["utils"])
-# 然后手改 includes,把单条路径加进去 → 直接 api-gen barrel
+api-gen gen-tbschema              # 全部
+api-gen gen-tbschema -d site      # 只生成 site
+api-gen gen-tbschema --force      # 覆盖已有骨架
 ```
 
-## §5 关键参数
+骨架结构:`{Response, Create, Update, Patch, ListQuery, ListResponse}` + `XxxContract = InferDTO<typeof XxxTBSchema>`,需手调业务字段。
 
-| 参数               | 用途                                               |
-| ------------------ | -------------------------------------------------- |
-| `--group <name>` | 只处理某个组(其他组跳过)                           |
-| `--dry-run`      | 预览,不落盘                                        |
-| `--lib`          | 仅导出`@public` 标记的符号(配合包入口 barrel 用) |
+**`gen-hook`**(从 b2b-api controller 派生 Eden-TanStack-Query hook):
 
-## 硬性约束
+```bash
+api-gen gen-hook              # web + b2b-admin 全部
+api-gen gen-hook -d site      # 只生成 site domain
+api-gen gen-hook -t web       # 只写 web(不写 b2b-admin)
+api-gen gen-hook -t b2b-admin # 只写 b2b-admin
+```
 
-- **不要**用 `generate` / `make-prompt` / `scan` / `info` / `link` / `raw` — 这些跟当前分层规范不一致,会被反噬
-- **不要**给 `index.ts` 手写内容(若有 `// Auto-generated by \`api-gen barrel\`` 标记会被覆盖;无标记会**跳过不覆盖**且 warn)
-- **CWD 必须在项目根** — 工具读 `process.cwd()` 找 `.vscode/api-config.json`,从 `apps/b2b-api/` 跑会失败
-- **改 barrel 后跑 `bun --filter @repo/contract run type-check`** 验证符号没漏(尤其是 `DICT_TYPE_DEF` 这种嵌套结构新增时)
+命名规则:`GET /current` → `useCurrent<Domain>`,`GET /:id` → `use<Domain>Detail(id)`,`POST /` → `useCreate<Domain>`,`DELETE /:id` → `useDelete<Domain>`。
 
-## 常见错误(我踩过的)
+## §6 硬性约束
 
-| 错误                                                      | 现象                                                                   | 修正                             |
-| --------------------------------------------------------- | ---------------------------------------------------------------------- | -------------------------------- |
-| 在`includes` 写多个完整路径                             | 重复跑多次同目录                                                       | 一个根路径搞定,让递归处理        |
-| `init` 之后又跑 `sync`                                | sync 把路径写回 config,但 barrel 本来也会自动展开                      | 跳过 sync,直接`barrel`         |
-| 从`apps/*` 子目录跑                                     | 找不到`.vscode/api-config.json`                                      | 切回 worktree 根                 |
-| 手写`index.ts` 加了自动标记                             | 下次 barrel 会覆盖你写的                                               | 不要加标记;真要手写就别加 marker |
-| 新增 def 文件后没跑 barrel                                | 顶层`import { X } from "@repo/contract/utils"` 报"X is not exported" | 跑`api-gen barrel`             |
-| 加了新 def 文件,`type-check` 过了但 b2b-api import 不到 | def 没在 barrel 中                                                     | barrel + type-check 一起跑       |
+- **CWD 必须在项目根** — 工具读 `process.cwd()` 找 `.vscode/api-config.json`,从子目录跑会失败
+- **首行 marker 保护**:`barrel / link / raw / gen-tbschema / gen-hook` 生成的文件首行带 `// Auto-generated by \`api-gen <cmd>\``;**已有但无 marker 的文件视为手动维护,跳过不覆盖并 warn**
+- **不要给 `index.ts` 手写内容加 marker** — 加了就被覆盖
+- **改 barrel 后跑 `bun --filter @repo/contract run type-check`** 验证符号没漏
 
-## 实战 checklist(tradeflow 加新字典的标准流程)
+## §7 完整文档索引
 
-1. 在 `packages/contract/src/utils/constants/definitions/` 加 `xxx.def.ts`(按 `.claude/rules/constants.md` 3 层结构)
-2. 跑 `api-gen barrel`(CWD 在 worktree 根)
-3. 跑 `bun --filter @repo/contract run type-check`
-4. 若改了 seed,跑 `cd apps/b2b-api && bun --env-file=.env.local run scripts/seed/seed-complete.ts` 验
-5. 提交 4 个文件:`.vscode/api-config.json`(若改了)+ def 文件 + 2 个被更新的 barrel(若符号有变)
+| 文件 | 内容 |
+|------|------|
+| `docs/layers.md` | 6 个 layer 后缀(controller / service / repos / dbschema / tbschema / relation) |
+| `docs/detector.md` | `detectLayout` 流程 + AppType 识别规则 |
+| `docs/app-types.md` | b2b-api / web / b2b-admin / frontend 四种形态详解 |
+| `docs/ast-scanner.md` | OXc 配置 + `parseTsFile` + `traverseAst` |
+| `docs/scan-and-generate.md` | `scan` + `generate` 流程 |
+| `docs/barrel-export.md` | 桶导出完整规范(级联规则 + 可见性过滤) |
+| `docs/sync.md` | sync 行为(约定名组 vs 路径形式组) |
+| `docs/testing.md` | 测试约定(fixtures/tradeflow/ + ?cb= 缓存破坏) |
+| `docs/commands/link.md` | 双聚合入口决策表 |
+| `docs/commands/raw.md` | dbschema → tbschema/raw/ 流程 + 桶路径策略 |
+| `docs/commands/gen-tbschema.md` | 骨架生成 + raw 依赖 + `--force` 语义 |
+| `docs/commands/gen-hook.md` | eden hook 命名规则 + `edenPrefix` 配置 |
 
-## 工具源码速查
+## §8 工具源码速查
 
-| 文件                          | 用途                                                                          |
-| ----------------------------- | ----------------------------------------------------------------------------- |
-| `src/commands/init.ts`      | 写`.vscode/api-config.json` 模板                                            |
-| `src/commands/sync.ts`      | 维护`exportIndex` 路径清单(可跳)                                            |
-| `src/commands/barrel.ts`    | 生成 index.ts(主战场)                                                         |
-| `src/utils/export-index.ts` | `scanPathGroupChildren` 递归扫描 + `SKIP_DIRS` 黑名单                     |
-| `src/utils/ast-scanner.ts`  | OXc 解析 + 具名导出提取                                                       |
-| `src/types/api-gen.json.ts` | 配置 TS 类型(`ApiConfig` / `ExportIndexConfig` / `Pipeline` / `Step`) |
-| `docs/barrel-export.md`     | 桶导出完整规范                                                                |
-| `docs/sync.md`              | sync 行为详解(关键:约定名组 vs 路径形式组对照表)                              |
-| `docs/architecture.md`      | AST 扫描原理、OXc 配置                                                        |
+| 文件 | 用途 |
+|------|------|
+| `src/commands/init.ts` | 写 `.vscode/api-config.json` 模板(默认 3 组 exportIndex) |
+| `src/commands/info.ts` | 探测结构 + 交互确认 appType,写 `.vscode/api-gen.json` |
+| `src/commands/sync.ts` | 维护 `exportIndex` 路径清单 |
+| `src/commands/barrel.ts` | 生成 index.ts(主战场) |
+| `src/commands/raw.ts` | dbschema → raw,桶路径优先 |
+| `src/commands/generate-tbschema.ts` | dbschema + raw → tbschema 骨架 |
+| `src/commands/link.ts` | 双聚合入口(b2b-api / web) |
+| `src/commands/generate-hook.ts` | controller → Eden hook(读 `edenPrefix`) |
+| `src/commands/scan.ts` | 抽 Elysia 路由 → `.vscode/api-spec.json` |
+| `src/commands/make-prompt.ts` | 渲染 ai-prompt.md |
+| `src/commands/generate.ts` | 调 AI 生代码 |
+| `src/commands/archive.ts` | 打包成 .tar.gz |
+| `src/structure/detector.ts` | `detectLayout`(项目结构探测 + AppType 默认值) |
+| `src/utils/ast-scanner.ts` | OXc 解析公共底座 |
+| `src/utils/export-index.ts` | `scanPathGroupChildren` 递归扫描 + `SKIP_DIRS` |
+| `src/utils/tree-builder.ts` | LAYERS 常量 + 结构树渲染 |
+| `src/utils/jsdoc-tags.ts` | `@public` / `@internal` 解析 |
+| `src/scanner/controller.ts` | Elysia 路由提取(给 scan / gen-hook 用) |
+| `src/types/api-gen.json.ts` | 配置 TS 类型(`ApiConfig` / `ApiGenRootConfig` / `AppType` / `CommonLayout` / `AppLayout`) |
 
-要扩展/改工具:改 `src/` → `bun run build`(自动 `npm link`)→ 在项目里跑验证。
+## §9 常见错误(踩过的)
+
+| 错误 | 现象 | 修正 |
+|------|------|------|
+| 倒过来跑:`raw` → `barrel` | raw 报"找不到 drizzle 桶",fallback 到单文件路径 | 改顺序:**先 `barrel` 再 `raw`** |
+| 没跑 `info` 就跑 `link` / `gen-hook` | 报"缺少 .vscode/api-gen.json" | 先 `api-gen info` 生成 |
+| 跑 `gen-hook` 报 `eden.api.v1.*` 不存在 | 没配 `edenPrefix`,但你的 eden 用了 prefix | 在 api-gen.json 加 `edenPrefix: "api"` |
+| 手写 `index.ts` 加了 marker | 下次 barrel 覆盖你的内容 | 不要加 marker;真要手写就别加 marker |
+| `link` 生成文件,`health` 重复 import | b2b-api `health` 既在 applyAllModules 链里,又单独 export | 已是当前行为:`health` 自动从链里剔除,单独 `export { healthController }` |
+| 从 `apps/*` 子目录跑 | 找不到 `.vscode/api-config.json` | 切回 worktree 根 |
+| `info` 报错 `UnknownPromptTypeError: "list"` | 用错 inquirer v14 的 prompt type | 已是 fixed,源码用 `type: "select"` |
+
+## §10 扩展工具
+
+改 `src/commands/*.ts` → `bun run build`(自动 `npm link`)→ 在项目里跑验证。
+
+- **新增命令**:在 `src/commands/<name>.ts` 导出 `xxxCommand` + `default`,然后到 `src/index.ts` 注册
+- **新增 AST 提取**:在 `src/utils/ast-scanner.ts` 的 `traverseAst` 回调加节点类型判断,**不要引入正则**
+- **新增 layer 后缀**:改 `src/utils/tree-builder.ts` 的 `LAYERS` 数组
+- **新增 AppType 行为**:改 `src/types/api-gen.json.ts` 的 `AppType` 联合 + `src/structure/detector.ts` 的 `probeAppType()` 决策表 + `src/commands/link.ts` 的 `planForApp()`
+- **新测试 fixture**:放 `fixtures/<name>/`,然后 `process.chdir` + `?cb=N` 缓存破坏 import
+`
