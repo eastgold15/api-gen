@@ -71,11 +71,12 @@ describe("tradeflow 完整流程 (3 app 布局)", () => {
   });
 
   // -----------------------------------------------------------------------
-  it("init 生成 api-config.json(含 definitions 桶组)", async () => {
+  it("init 生成 api-config.json(含 definitions + drizzle 桶组)", async () => {
     await runCmd(root, "../commands/init.js", "initCommand");
     expect(existsSync(configPath)).toBe(true);
     const cfg = JSON.parse(readFileSync(configPath, "utf-8"));
     expect(cfg.exportIndex.includes).toContain("utils");
+    expect(cfg.exportIndex.includes).toContain("packages/contract/src/drizzle");
     expect(cfg.exportIndex.includes).toContain("packages/contract/src/utils/constants/definitions");
     expect(cfg.exportIndex["packages/contract/src/utils/constants/definitions"]).toEqual([]);
   });
@@ -114,7 +115,7 @@ describe("tradeflow 完整流程 (3 app 布局)", () => {
   });
 
   // -----------------------------------------------------------------------
-  it("raw 从 dbschema 派生 tbschema/raw/*.dbschema.raw.ts", async () => {
+  it("raw 从 dbschema 派生 tbschema/raw/*.dbschema.raw.ts(优先用桶路径)", async () => {
     await runCmd(root, "../commands/raw.js", "rawCommand");
     const rawSite = join(root, "packages/contract/src/tbschema/raw/site.dbschema.raw.ts");
     const rawCustomer = join(root, "packages/contract/src/tbschema/raw/customer.dbschema.raw.ts");
@@ -125,6 +126,38 @@ describe("tradeflow 完整流程 (3 app 布局)", () => {
     expect(site).toContain("SiteRawSelect");
     expect(site).toContain("SiteRawInsert");
     expect(site).toContain("SiteRawUpdate");
+    // 桶路径(raw → ../../../drizzle):barrel 已先跑,drizzle/index.ts 存在
+    expect(site).toMatch(/import \{ siteTable \} from "\.\.\/\.\.\/drizzle";/);
+  });
+
+  // -----------------------------------------------------------------------
+  it("raw 缺桶时 fallback 到单文件路径(无 index.ts)", async () => {
+    const drizzleIdx = join(root, "packages/contract/src/drizzle/index.ts");
+    if (!existsSync(drizzleIdx)) {
+      // 桶不存在(理论上有,但保险),直接测 fallback:删 raw 后重跑
+      throw new Error("前提:drizzle/index.ts 必须存在(上一条测试已生成)");
+    }
+    // 备份桶,删桶,删 raw,重跑 raw,验证 fallback,再恢复
+    const backup = readFileSync(drizzleIdx, "utf-8");
+    const { unlinkSync, existsSync: e2, writeFileSync: w2 } = await import("node:fs");
+    try {
+      unlinkSync(drizzleIdx);
+      // 删旧 raw 让 rawCommand 重新生成
+      const rawFiles = [
+        join(root, "packages/contract/src/tbschema/raw/site.dbschema.raw.ts"),
+        join(root, "packages/contract/src/tbschema/raw/customer.dbschema.raw.ts"),
+        join(root, "packages/contract/src/tbschema/raw/hero-card.dbschema.raw.ts"),
+        join(root, "packages/contract/src/tbschema/raw/site-product.dbschema.raw.ts"),
+      ];
+      for (const f of rawFiles) if (e2(f)) unlinkSync(f);
+
+      await runCmd(root, "../commands/raw.js", "rawCommand");
+      const site = readFileSync(rawFiles[0], "utf-8");
+      // fallback:无桶,直接 import 单文件(去 .ts)
+      expect(site).toMatch(/import \{ siteTable \} from "\.\.\/\.\.\/drizzle\/table\.dbschema";/);
+    } finally {
+      w2(drizzleIdx, backup, "utf-8");
+    }
   });
 
   // -----------------------------------------------------------------------
@@ -185,13 +218,36 @@ describe("tradeflow 完整流程 (3 app 布局)", () => {
     expect(content).toContain("useSiteDetail");
     expect(content).toContain("useCreateSite");
     expect(content).toContain("useDeleteSite");
-    // eden 链式 + queryOptions
-    expect(content).toContain("eden.api.v1.site");
+    // eden 链式 + queryOptions(无 v1,默认 edenPrefix="")
+    expect(content).toContain("eden.site");
+    expect(content).not.toContain("eden.api.v1");
     expect(content).toContain("queryOptions");
     expect(content).toContain("mutationOptions");
     // 函数体完整(防回归:模板曾漏 `{`)
     expect(content).toMatch(/useCurrentSite\(\) \{\s+const eden/);
     expect(content).toMatch(/useSiteDetail\(id: string\) \{\s+const eden/);
+  });
+
+  // -----------------------------------------------------------------------
+  it("gen-hook 读取 edenPrefix 配置(api 前缀挂载)", async () => {
+    // 重新写 api-gen.json 加上 edenPrefix:"api"
+    const infoPath2 = join(root, ".vscode/api-gen.json");
+    const cfg = JSON.parse(readFileSync(infoPath2, "utf-8"));
+    cfg.edenPrefix = "api";
+    writeFileSync(infoPath2, JSON.stringify(cfg, null, 2), "utf-8");
+
+    rmSync(join(root, "apps/web/src/hooks/api"), { recursive: true, force: true });
+    rmSync(join(root, "apps/b2b-admin/src/hooks/api"), { recursive: true, force: true });
+    await runCmd(root, "../commands/generate-hook.js", "generateHookCommand");
+
+    const webHook = join(root, "apps/web/src/hooks/api/use-site.ts");
+    const content = readFileSync(webHook, "utf-8");
+    // edenPrefix="api" → eden.api.site
+    expect(content).toContain("eden.api.site");
+    expect(content).toContain("eden.api.site.get");
+    // 复原,避免影响后续测试
+    cfg.edenPrefix = "";
+    writeFileSync(infoPath2, JSON.stringify(cfg, null, 2), "utf-8");
   });
 
   // -----------------------------------------------------------------------

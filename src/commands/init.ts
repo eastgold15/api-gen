@@ -12,8 +12,15 @@ const DEFAULT_CONFIG: ApiConfig = {
     baseUrl: "https://api.deepseek.com",
   },
   exportIndex: {
-    includes: ["utils", "packages/contract/src/utils/constants/definitions"],
-    // 路径形式组,空数组 = barrel 时自动递归展开
+    // includes 三组:
+    //  - utils: 工具函数桶
+    //  - drizzle: dbschema 桶(raw 文件统一从这里 import,先 barrel 再 raw)
+    //  - constants/definitions: 3 层常量字典(路径形式组,空数组自动展开)
+    includes: [
+      "utils",
+      "packages/contract/src/drizzle",
+      "packages/contract/src/utils/constants/definitions",
+    ],
     "packages/contract/src/utils/constants/definitions": [],
   },
   pipelines: [

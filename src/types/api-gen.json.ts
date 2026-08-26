@@ -116,6 +116,10 @@ export interface ApiConfig {
   exportIndex: ExportIndexConfig;
   /** 可选的工作流管道配置 */
   pipelines?: Pipeline[];
+  /** Eden Treaty 路径前缀(同 ApiGenRootConfig.edenPrefix)。
+   *  缺省空串 = 直接挂载,无版本号。
+   *  示例:"api" (prefix: "/api") / "api.v1" (prefix: "/api/v1") */
+  edenPrefix?: string;
 }
 
 /** 全局根配置:给 AI 看的项目结构(api-gen.json) */
@@ -127,4 +131,10 @@ export interface ApiGenRootConfig {
   structureTree: string;
   common: CommonLayout | null;
   apps: AppLayout[];
+  /** Eden Treaty 路径前缀,用于 generate:hook 拼装 eden 访问链。
+   *  - 默认 "" (直接挂载,无版本号)
+   *  - 单挂载点 "api" (server.ts: new Elysia({ prefix: "/api" }))
+   *  - 多版本 "api.v1" / "api.v2" 等
+   *  注意:b2b-api 端 Elysia 的 prefix 决定此值,user 须保持一致 */
+  edenPrefix?: string;
 }

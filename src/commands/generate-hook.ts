@@ -1,9 +1,9 @@
-import { existsSync, readdirSync } from "node:fs";
+import { existsSync } from "node:fs";
 import { readFileSync, writeFileSync, ensureDirSync } from "@visulima/fs";
-import { resolve, join, basename, dirname } from "@visulima/path";
+import { resolve, join } from "@visulima/path";
 import chalk from "@visulima/colorize";
 import { pail } from "@visulima/pail";
-import { scanController, scanAllControllers, type ControllerSpec, type RouteSpec } from "../scanner/controller.js";
+import { scanAllControllers, type RouteSpec } from "../scanner/controller.js";
 import type { ApiGenRootConfig, AppLayout } from "../types/api-gen.json.js";
 
 // ---------------------------------------------------------------------------
@@ -20,7 +20,7 @@ interface HookEntry {
   /** hook 函数名,如 useCurrentSite */
   fnName: string;
   method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
-  /** eden 链式访问路径段,不含 eden/api/v1 前缀 */
+  /** eden 链式访问路径段,不含 edenPrefix 前缀 */
   edenSegments: string[];
   /** 是否接受 id 参数(动态路径 :id) */
   hasIdParam: boolean;
@@ -106,17 +106,28 @@ function deriveEdenSegments(route: RouteSpec, domainKebab: string): { segs: stri
 // 渲染 hook 函数
 // ---------------------------------------------------------------------------
 
-function renderHook(entry: HookEntry, domainPascal: string): string {
-  const edenAccess = `eden.api.v1.${entry.edenSegments.join(".")}.${entry.edenTail}`;
+/**
+ * 渲染单个 hook 函数。
+ *
+ * @param edenPrefix  Eden 访问链前缀,缺省 ""(直接挂载)。
+ *                    - ""  → eden.<domain>.<path>.<method>
+ *                    - "api" → eden.api.<domain>.<path>.<method>(server.ts: prefix "/api")
+ *                    - "api.v1" → eden.api.v1.<domain>... (多版本)
+ *                    该值需与 .vscode/api-gen.json 的 edenPrefix 保持一致。
+ */
+function renderHook(entry: HookEntry, domainPascal: string, edenPrefix: string): string {
+  const segs = edenPrefix
+    ? `${edenPrefix}.${entry.edenSegments.join(".")}`
+    : entry.edenSegments.join(".");
+  const tail = entry.edenTail;
 
   if (entry.method === "GET") {
     if (entry.hasIdParam) {
-      // use<Domain>Detail(id) — eden path 已是 (id) 形式,可直接传字符串
       return [
         `export function ${entry.fnName}(id: string) {`,
         `  const eden = useEden();`,
         `  return useQuery(`,
-        `    eden.api.v1.${entry.edenSegments.join(".")}.${entry.edenTail}.queryOptions(`,
+        `    eden.${segs}.${tail}.queryOptions(`,
         `      { id },`,
         `      { staleTime: 5 * 60 * 1000 }`,
         `    )`,
@@ -126,27 +137,31 @@ function renderHook(entry: HookEntry, domainPascal: string): string {
     }
     return [
       `export function ${entry.fnName}() {`,
-        `  const eden = useEden();`,
-        `  return useQuery(`,
-        `    eden.api.v1.${entry.edenSegments.join(".")}.${entry.edenTail}.queryOptions(`,
-        `      {},`,
-        `      { staleTime: 5 * 60 * 1000 }`,
-        `    )`,
-        `  );`,
-        `}`,
+      `  const eden = useEden();`,
+      `  return useQuery(`,
+      `    eden.${segs}.${tail}.queryOptions(`,
+      `      {},`,
+      `      { staleTime: 5 * 60 * 1000 }`,
+      `    )`,
+      `  );`,
+      `}`,
     ].join("\n");
   }
 
   // POST/PUT/PATCH/DELETE — mutation
+  // invalidateQueries 启发式:失效该 domain 根 get 列表
+  const rootGet = edenPrefix
+    ? `eden.${edenPrefix}.${entry.edenSegments[0]}.get`
+    : `eden.${entry.edenSegments[0]}.get`;
   return [
     `export function ${entry.fnName}() {`,
     `  const eden = useEden();`,
     `  const qc = useQueryClient();`,
     `  return useMutation({`,
-    `    ...eden.api.v1.${entry.edenSegments.join(".")}.${entry.edenTail}.mutationOptions(),`,
+    `    ...eden.${segs}.${tail}.mutationOptions(),`,
     `    onSuccess: () => {`,
     `      toast.success("操作成功");`,
-    `      qc.invalidateQueries({ queryKey: eden.api.v1.${entry.edenSegments[0]}.get.queryKey() });`,
+    `      qc.invalidateQueries({ queryKey: ${rootGet}.queryKey() });`,
     `    },`,
     `    onError: (e: any) => toast.error(e?.value?.title ?? "操作失败"),`,
     `  });`,
@@ -161,6 +176,7 @@ function renderHook(entry: HookEntry, domainPascal: string): string {
 function generateHookFile(
   domainKebab: string,
   entries: HookEntry[],
+  edenPrefix: string,
 ): string {
   const lines: string[] = [];
   lines.push(MARKER);
@@ -171,7 +187,7 @@ function generateHookFile(
   lines.push("");
 
   for (const e of entries) {
-    lines.push(renderHook(e, kebabToPascal(domainKebab)));
+    lines.push(renderHook(e, kebabToPascal(domainKebab), edenPrefix));
     lines.push("");
   }
   return lines.join("\n");
@@ -193,6 +209,9 @@ export async function generateHookCommand(opts: GenerateHookOptions = {}): Promi
 
   const raw = readFileSync(CONFIG_PATH);
   const config = JSON.parse(raw) as ApiGenRootConfig;
+
+  // Eden 路径前缀:从配置读,缺省 "" (无 prefix,直接挂载)
+  const edenPrefix = config.edenPrefix ?? "";
 
   // 找 b2b-api app(hook 源)
   const b2bApi = config.apps.find((a) => a.appType === "b2b-api");
@@ -256,7 +275,7 @@ export async function generateHookCommand(opts: GenerateHookOptions = {}): Promi
       };
     });
 
-    const content = generateHookFile(domainKebab, entries);
+    const content = generateHookFile(domainKebab, entries, edenPrefix);
 
     for (const target of targets) {
       const hooksDir = resolve(CWD, target.appRoot, "src/hooks/api");
@@ -284,6 +303,9 @@ export async function generateHookCommand(opts: GenerateHookOptions = {}): Promi
   }
 
   pail.success(`已生成 ${totalFiles} 个 hook 文件`);
+  if (edenPrefix) {
+    pail.info(`Eden prefix: ${chalk.cyan(edenPrefix)} (来自 .vscode/api-gen.json)`);
+  }
 }
 
 export default async function generateHook(opts?: GenerateHookOptions): Promise<void> {
