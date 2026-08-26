@@ -1,6 +1,7 @@
 ---
 name: api-gen
-description: this skill should be used when working with the `api-gen` CLI tool — a barrel-export + Elysia scaffolding generator for the Elysia + Drizzle + TypeBox + Eden-TanStack-Query stack. Activates for any task involving running `api-gen init/sync/info/scan/barrel/raw/gen-tbschema/link/gen-hook/generate/make-prompt`, regenerating `index.ts` barrel files, scaffolding tbschema / raw / hook files, or extending the tool itself. Source: /home/pori/Documents/GitHub/api-gen.
+description: |
+  this skill should be used when working with the `api-gen` CLI tool — a barrel-export + Elysia scaffolding generator for the Elysia + Drizzle + TypeBox + Eden-TanStack-Query stack. Activates for any task involving running `api-gen init/sync/info/scan/barrel/raw/gen-tbschema/link/gen-hook/generate/make-prompt`, regenerating `index.ts` barrel files, scaffolding tbschema / raw / hook files, or extending the tool itself. Source: /home/pori/Documents/GitHub/api-gen.
 ---
 
 # api-gen CLI 速通
