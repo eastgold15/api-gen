@@ -47,8 +47,15 @@ cli.addCommand({
     description: "项目目录",
     type: String,
   },
-  execute: async ({ argument }: Toolbox) => {
-    await info(argument[0]);
+  options: [
+    {
+      name: "yes",
+      description: "跳过确认提示,直接保存(非交互式场景)",
+      type: Boolean,
+    },
+  ],
+  execute: async ({ argument, options }: Toolbox) => {
+    await info(argument[0], { yes: options?.yes === true });
   },
 });
 

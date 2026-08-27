@@ -162,8 +162,12 @@ async function askAppType(apps: AppLayout[]): Promise<AppLayout[]> {
 // info 主命令逻辑（生成 api-gen.json，给 AI 看的项目结构）
 // ---------------------------------------------------------------------------
 
-export async function infoCommand(directory?: string): Promise<void> {
+export async function infoCommand(
+  directory?: string,
+  options: { yes?: boolean } = {},
+): Promise<void> {
   const cwd = directory ? resolve(directory) : process.cwd();
+  const autoYes = options.yes === true;
 
   pail.debug(`\n  正在扫描目录：${cwd} …`);
 
@@ -171,16 +175,18 @@ export async function infoCommand(directory?: string): Promise<void> {
 
   printLayout(config);
 
-  // 第一轮:确认是否保存
-  const confirmed = await askConfirm("是否将检测到的项目结构保存到 .vscode/api-gen.json？");
+  // 第一轮:确认是否保存(--yes 跳过 inquirer,直接保存)
+  const confirmed = autoYes
+    ? true
+    : await askConfirm("是否将检测到的项目结构保存到 .vscode/api-gen.json？");
 
   if (!confirmed) {
     pail.warn("\n  操作已取消。");
     return;
   }
 
-  // 第二轮:逐个 app 确认 appType(detector 默认值可改)
-  const finalApps = await askAppType(config.apps);
+  // 第二轮:逐个 app 确认 appType(--yes 跳过,直接用 detector 默认值)
+  const finalApps = autoYes ? config.apps : await askAppType(config.apps);
   if (finalApps.length === 0) {
     pail.warn("\n  所有 app 都被丢弃,操作取消。");
     return;

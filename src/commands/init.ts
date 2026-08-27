@@ -12,16 +12,14 @@ const DEFAULT_CONFIG: ApiConfig = {
     baseUrl: "https://api.deepseek.com",
   },
   exportIndex: {
-    // includes 三组:
-    //  - utils: 工具函数桶
-    //  - drizzle: dbschema 桶(raw 文件统一从这里 import,先 barrel 再 raw)
-    //  - constants/definitions: 3 层常量字典(路径形式组,空数组自动展开)
+    // 对库(package 源码根),includes 填一个根路径即可:
+    //   sync 会自动递归扫这个目录下所有"有内容"的子目录,生成 index.ts 桶导出。
+    // 多个不连续的库 → 多个根路径(每个都会被独立递归展开)。
+    // 约定名组(utils/hooks/...) → 沿用"组名 + 同名目录列表"形式,本项目用不到。
+    // 路径形式组(具体到子目录,如 .../constants/definitions) → 空数组 = 自动展开。
     includes: [
-      "utils",
-      "packages/contract/src/drizzle",
-      "packages/contract/src/utils/constants/definitions",
+      "packages/contract/src",
     ],
-    "packages/contract/src/utils/constants/definitions": [],
   },
   pipelines: [
     [
@@ -48,8 +46,8 @@ export async function initCommand(): Promise<void> {
   writeFileSync(configPath, JSON.stringify(DEFAULT_CONFIG, null, 2), "utf-8");
 
   pail.success(`CLI 脚本配置已保存至 ${configPath}`);
-  pail.info("请编辑 ai.apiKey 后使用，然后运行 `api-gen info` 探测项目结构");
-  pail.info("接着 `api-gen sync` 填充 barrel 导出路径(utils + constants/definitions)");
+  pail.info("请编辑 ai.apiKey 后使用,然后运行 `api-gen info` 探测项目结构");
+  pail.info("接着 `api-gen barrel`(无需先跑 sync:includes 里的根路径会自动递归展开)");
 }
 
 export default initCommand;

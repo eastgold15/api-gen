@@ -31,9 +31,9 @@ description: |
 **tradeflow 完整流水线**(从空仓库到全部生成):
 
 ```bash
-api-gen init              # 1. 写 .vscode/api-config.json(exportIndex 默认带 drizzle 桶组)
+api-gen init              # 1. 写 .vscode/api-config.json(exportIndex 默认带 packages/contract/src 一个根)
 api-gen info              # 2. 探测结构 → .vscode/api-gen.json(逐 app 确认 appType)
-api-gen barrel            # 3. 生成 utils + drizzle + definitions 三组桶
+api-gen barrel            # 3. 自动递归展开 exportIndex 里的根路径,生成 index.ts 桶
 api-gen raw               # 4. 从 dbschema 派生 tbschema/raw/*.dbschema.raw.ts
 api-gen gen-tbschema      # 5. 派生 tbschema/*.tbschema.ts 骨架(可选 --domain / --force)
 api-gen link              # 6. b2b-api → applyAllModules;web → applyAllControllers
@@ -46,7 +46,7 @@ api-gen gen-hook          # 7. b2b-api controller → web/b2b-admin use-*.ts hoo
 
 | 文件 | 谁写 | 读它做什么 |
 |------|------|-----------|
-| `.vscode/api-config.json` | `init` 写一次,手改 | AI 配置 + 桶导出组 + 工作流管道 + `edenPrefix` |
+| `.vscode/api-config.json` | `init` 写一次,手改 | AI 配置 + 桶导出根路径 + 工作流管道 + `edenPrefix` |
 | `.vscode/api-gen.json` | `info` 写一次,手改覆盖 appType | 项目结构 + AppType + 聚合入口位置 |
 
 **AppType**(`.vscode/api-gen.json` 决定)控制 link / gen-hook 行为:
@@ -75,33 +75,36 @@ api-gen gen-hook          # 7. b2b-api controller → web/b2b-admin use-*.ts hoo
 
 ## §3 桶导出 — barrel
 
-两类组,行为完全不同:
-
-**约定名组**(多个同名目录一起导出):
+**核心约定(2026-08 修订)**:对**库文件**,`exportIndex.includes` 填**一个根路径**就够了,`barrel` 会自动递归扫整个目录下所有"有内容"的子目录,生成 `index.ts` 桶导出。
 
 ```jsonc
-{ "exportIndex": { "includes": ["utils"], "utils": ["packages/contract/src/utils"] } }
+// tradeflow 当前 init 模板(只有一个根):
+{
+  "exportIndex": {
+    "includes": ["packages/contract/src"]
+  }
+}
 ```
 
-**路径形式组**(整个目录一次性递归,**最常用**):
+- `packages/contract/src/` 根 → `drizzle/` / `tbschema/` / `utils/` 等顶层有内容的子目录都会被自动展开
+- `utils/` 内部又递归展开为 `response/`, `constants/definitions/`, `upload.constants.ts` 等
+- 多个不连续的库 → 多个根路径(各自独立递归)
 
-```jsonc
-{ "exportIndex": { "includes": ["packages/contract/src/utils"], "packages/contract/src/utils": [] } }
-```
+旧的两类组机制(约定名组 + 路径形式组)依然支持,但**新代码一律用"根路径一个填齐"**:
 
-空数组 = barrel 时自动递归展开,不需要先跑 `sync`。
+| 写法 | 适用场景 |
+|---|---|
+| `includes: ["packages/contract/src"]` ← 唯一推荐 | 库文件,99% 场景 |
+| `includes: ["utils"], utils: ["..."]` | 旧约定名组(单项目内多个 utils/ 目录平铺),本项目不用 |
+| `includes: ["packages/contract/src/utils"], "...": []` | 细到子目录(想排除兄弟目录时),init 默认已用根路径,不需要 |
+
+`barrel` 在 includes 项是 path-like + 空数组时,会调用 `scanPathGroupChildren` 自动展开,**不需要先跑 `sync`**(sync 主要是把"约定名组"自动填成具体路径列表,根路径用法下完全可跳)。
 
 | 参数 | 用途 |
 |------|------|
 | `--group <name>` | 只处理某组 |
 | `--dry-run` | 预览不落盘 |
 | `--lib` | 仅导出 `@public` 标记的符号(库入口用) |
-
-**`init` 默认带的三组**(tradeflow):
-
-- `utils` — 工具函数
-- `packages/contract/src/drizzle` — dbschema 桶(`raw` 从这里 import,先 barrel 再 raw)
-- `packages/contract/src/utils/constants/definitions` — 3 层常量字典(路径形式组)
 
 ## §4 raw — 桶路径优先,fallback 单文件
 
@@ -168,6 +171,7 @@ api-gen gen-hook -t b2b-admin # 只写 b2b-admin
 | 错误 | 现象 | 修正 |
 |------|------|------|
 | 倒过来跑:`raw` → `barrel` | raw 报"找不到 drizzle 桶",fallback 到单文件路径 | 改顺序:**先 `barrel` 再 `raw`** |
+| `exportIndex` 填了一堆子目录路径 | 多此一举(每个 path-like 项都会被 `barrel` 自动递归展开) | 改用**一个根路径**就够了:`includes: ["packages/contract/src"]` |
 | 没跑 `info` 就跑 `link` / `gen-hook` | 报"缺少 .vscode/api-gen.json" | 先 `api-gen info` 生成 |
 | 跑 `gen-hook` 报 `eden.api.v1.*` 不存在 | 没配 `edenPrefix`,但 eden 实际挂了 prefix | 在 api-gen.json 加 `edenPrefix: "api"` |
 | 手写 `index.ts` 加了 marker | 下次 barrel 覆盖你的内容 | 不要加 marker;真要手写就别加 marker |
