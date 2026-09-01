@@ -34,7 +34,7 @@
     "@visulima/string": "^3.1.0",
     "@visulima/tabular": "^4.1.0",
     "inquirer": "^14.1.0",
-    "oxc-parser": "^0.146.0",
+    "oxc-parser": "^0.147.0",
     "tar": "^7.5.22",
     "tinyglobby": "^0.2.17"
   },
