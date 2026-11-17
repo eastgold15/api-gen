@@ -26,7 +26,7 @@ function detectEdenPrefixFromServer(appRoot: string | undefined): string | null 
   const serverPath = resolve(CWD, appRoot, "src/server.ts");
   if (!existsSync(serverPath)) return null;
 
-  const src = readFileSync(serverPath, "utf-8");
+  const src = readFileSync(serverPath);
   const parts: string[] = [];
 
   // 1) new Elysia({ prefix: "/api" })
@@ -323,10 +323,10 @@ export async function generateHookCommand(opts: GenerateHookOptions = {}): Promi
   const controllers = scanAllControllers(modulesDir);
   const filtered = opts.domain
     ? controllers.filter((c) => {
-        // c.name 形如 "siteController",domain 形如 "site"
-        const domain = c.name.replace(/Controller$/, "").replace(/^./, c => c.toLowerCase());
-        return domain === opts.domain;
-      })
+      // c.name 形如 "siteController",domain 形如 "site"
+      const domain = c.name.replace(/Controller$/, "").replace(/^./, c => c.toLowerCase());
+      return domain === opts.domain;
+    })
     : controllers;
 
   if (filtered.length === 0) {
