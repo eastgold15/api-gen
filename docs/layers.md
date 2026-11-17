@@ -5,8 +5,8 @@
 ## LAYERS 数组
 
 ```ts
-export type Layer = "controller" | "service" | "repos" | "dbschema" | "tbschema" | "relation";
-export const LAYERS: Layer[] = ["controller", "service", "repos", "dbschema", "tbschema", "relation"];
+export type Layer = "controller" | "service" | "repos" | "dbschema" | "zschema" | "relation";
+export const LAYERS: Layer[] = ["controller", "service", "repos", "dbschema", "zschema", "relation"];
 ```
 
 注意：常量字典 `def` 不在 LAYERS 数组里（不参与 tree-builder 的目录着色），但被 barrel 识别并触发 3 层导出。
@@ -19,7 +19,7 @@ export const LAYERS: Layer[] = ["controller", "service", "repos", "dbschema", "t
 | `service` | `<domain>.service.ts` | `class XxxService { ... }` 业务方法 | 同 controller 同目录 |
 | `repos` | `<domain>.repos.ts` | Drizzle 查询函数 / 类 | 同 controller 同目录 |
 | `dbschema` | `<name>.dbschema.ts` | `pgTable(...)` 导出变量 | `packages/contract/src/drizzle/` |
-| `tbschema` | `<name>.tbschema.ts` | `XxxTBSchema` 对象 + `XxxContract = InferDTO<...>` 类型 | `packages/contract/src/tbschema/` |
+| `zschema` | `<name>.zschema.ts` | `XxxZSchema` 对象 + `XxxContract = InferDTO<...>` 类型 | `packages/contract/src/zschema/` |
 | `relation` | `<name>.relation.ts` | Drizzle relations() 导出 | `packages/contract/src/` |
 
 ## 3 层常量字典（`def`）
@@ -38,5 +38,5 @@ barrel 在生成该子目录 `index.ts` 时，**不展开**这些常量（不像
 
 - **kebab-case**：`<domain>` 在 controller / service / repos 路径里推荐 kebab（`hero-card` → `hero-card.controller.ts`），Pascal（`HeroCard`）不推荐，因为 detector 提取 domain 时要从变量名反推。
 - **PascalCase**：`XxxController` 风格的变量名要 camelCase（`heroCardController`），link 命令会按 `camelCase` 校验并 warn 非驼峰。
-- **dbschema 表名后缀**：所有 `pgTable` 导出变量必须以 `Table` 结尾（`siteTable` / `customerTable`），因为 raw / gen-tbschema 的命名派生都依赖这个后缀。
-- **tbschema 名 = dbschema 名（去掉 Table）**：`siteTable` ↔ `site.tbschema.ts` ↔ `siteTBSchema`。
+- **dbschema 表名后缀**：所有 `pgTable` 导出变量必须以 `Table` 结尾（`siteTable` / `customerTable`），因为 raw / gen-zschema 的命名派生都依赖这个后缀。
+- **zschema 名 = dbschema 名（去掉 Table）**：`siteTable` ↔ `site.zschema.ts` ↔ `siteZSchema`。

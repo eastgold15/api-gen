@@ -75,19 +75,22 @@ describe("tradeflow 完整流程 (3 app 布局)", () => {
     await runCmd(root, "../commands/init.js", "initCommand");
     expect(existsSync(configPath)).toBe(true);
     const cfg = JSON.parse(readFileSync(configPath, "utf-8"));
-    expect(cfg.exportIndex.includes).toContain("utils");
-    expect(cfg.exportIndex.includes).toContain("packages/contract/src/drizzle");
-    expect(cfg.exportIndex.includes).toContain("packages/contract/src/utils/constants/definitions");
-    expect(cfg.exportIndex["packages/contract/src/utils/constants/definitions"]).toEqual([]);
+    expect(cfg.exportIndex.includes).toContain("packages/database/src");
+    expect(cfg.exportIndex.includes).toContain("packages/shared-types/src");
+    expect(cfg.exportIndex.includes).toContain("packages/shared-types/src/utils/constants/definitions");
+    // init 只写 includes,路径形式组的 key 由 sync 展开时才建立
+    expect(cfg.exportIndex["packages/shared-types/src/utils/constants/definitions"]).toBeUndefined();
   });
 
   // -----------------------------------------------------------------------
   it("sync 填充 utils 路径 + 路径形式组 definitions", async () => {
     await runCmd(root, "../commands/sync.js", "syncCommand");
     const cfg = JSON.parse(readFileSync(configPath, "utf-8"));
-    expect(cfg.exportIndex.utils.length).toBeGreaterThan(0);
+    // sync 后根路径 key 下挂各子目录
+    expect(cfg.exportIndex["packages/shared-types/src"].length).toBeGreaterThan(0);
+    expect(cfg.exportIndex["packages/database/src"]).toContain("packages/database/src/drizzle");
     // 路径形式组应自动扫描,找到 status.def.ts
-    const defs = cfg.exportIndex["packages/contract/src/utils/constants/definitions"];
+    const defs = cfg.exportIndex["packages/shared-types/src/utils/constants/definitions"];
     expect(defs.length).toBeGreaterThan(0);
     expect(defs[0]).toContain("status.def.ts");
   });
@@ -97,7 +100,7 @@ describe("tradeflow 完整流程 (3 app 布局)", () => {
     await runCmd(root, "../commands/barrel.js", "barrelCommand");
 
     // definitions 组(路径形式组)生成 definitions/index.ts
-    const defsIdx = join(root, "packages/contract/src/utils/constants/definitions/index.ts");
+    const defsIdx = join(root, "packages/shared-types/src/utils/constants/definitions/index.ts");
     expect(existsSync(defsIdx)).toBe(true);
     const content = readFileSync(defsIdx, "utf-8");
     // status.def.ts 的 3 个常量都应 re-export
@@ -115,10 +118,10 @@ describe("tradeflow 完整流程 (3 app 布局)", () => {
   });
 
   // -----------------------------------------------------------------------
-  it("raw 从 dbschema 派生 tbschema/raw/*.dbschema.raw.ts(优先用桶路径)", async () => {
+  it("raw 从 dbschema 派生 zschema/raw/*.dbschema.raw.ts(优先用桶路径)", async () => {
     await runCmd(root, "../commands/raw.js", "rawCommand");
-    const rawSite = join(root, "packages/contract/src/tbschema/raw/site.dbschema.raw.ts");
-    const rawCustomer = join(root, "packages/contract/src/tbschema/raw/customer.dbschema.raw.ts");
+    const rawSite = join(root, "packages/database/src/zschema/raw/site.dbschema.raw.ts");
+    const rawCustomer = join(root, "packages/database/src/zschema/raw/customer.dbschema.raw.ts");
     expect(existsSync(rawSite)).toBe(true);
     expect(existsSync(rawCustomer)).toBe(true);
     const site = readFileSync(rawSite, "utf-8");
@@ -132,7 +135,7 @@ describe("tradeflow 完整流程 (3 app 布局)", () => {
 
   // -----------------------------------------------------------------------
   it("raw 缺桶时 fallback 到单文件路径(无 index.ts)", async () => {
-    const drizzleIdx = join(root, "packages/contract/src/drizzle/index.ts");
+    const drizzleIdx = join(root, "packages/database/src/drizzle/index.ts");
     if (!existsSync(drizzleIdx)) {
       // 桶不存在(理论上有,但保险),直接测 fallback:删 raw 后重跑
       throw new Error("前提:drizzle/index.ts 必须存在(上一条测试已生成)");
@@ -144,10 +147,10 @@ describe("tradeflow 完整流程 (3 app 布局)", () => {
       unlinkSync(drizzleIdx);
       // 删旧 raw 让 rawCommand 重新生成
       const rawFiles = [
-        join(root, "packages/contract/src/tbschema/raw/site.dbschema.raw.ts"),
-        join(root, "packages/contract/src/tbschema/raw/customer.dbschema.raw.ts"),
-        join(root, "packages/contract/src/tbschema/raw/hero-card.dbschema.raw.ts"),
-        join(root, "packages/contract/src/tbschema/raw/site-product.dbschema.raw.ts"),
+        join(root, "packages/database/src/zschema/raw/site.dbschema.raw.ts"),
+        join(root, "packages/database/src/zschema/raw/customer.dbschema.raw.ts"),
+        join(root, "packages/database/src/zschema/raw/hero-card.dbschema.raw.ts"),
+        join(root, "packages/database/src/zschema/raw/site-product.dbschema.raw.ts"),
       ];
       for (const f of rawFiles) if (e2(f)) unlinkSync(f);
 
@@ -161,12 +164,12 @@ describe("tradeflow 完整流程 (3 app 布局)", () => {
   });
 
   // -----------------------------------------------------------------------
-  it("gen-tbschema 从 dbschema + raw 派生 tbschema 骨架", async () => {
-    await runCmd(root, "../commands/generate-tbschema.js", "generateTbschemaCommand");
-    const tbs = join(root, "packages/contract/src/tbschema/site.tbschema.ts");
+  it("gen-zschema 从 dbschema + raw 派生 zschema 骨架", async () => {
+    await runCmd(root, "../commands/generate-zschema.js", "generateZschemaCommand");
+    const tbs = join(root, "packages/shared-types/src/zschema/site.zschema.ts");
     expect(existsSync(tbs)).toBe(true);
     const content = readFileSync(tbs, "utf-8");
-    expect(content).toContain("SiteTBSchema");
+    expect(content).toContain("SiteZSchema");
     expect(content).toContain("SiteContract");
     expect(content).toContain("Response");
     expect(content).toContain("Create");

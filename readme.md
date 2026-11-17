@@ -1,9 +1,9 @@
 # api-gen
 
 > 基于 **OXc AST 静态解析** 的后端脚手架 CLI。
-> 服务于 **Elysia + Drizzle + TypeBox** + Elysia Eden TanStack Query 的分层项目。
+> 服务于 **Elysia + Drizzle + Zod** + Elysia Eden TanStack Query 的分层项目。
 
-`api-gen` 扫描按约定命名的分层文件，自动生成桶导出、控制器聚合、raw DTO、TypeBox 契约骨架、Eden-TanStack-Query hook 骨架，并能组装 AI 提示词或直接调用 AI 生成分层代码。
+`api-gen` 扫描按约定命名的分层文件，自动生成桶导出、控制器聚合、raw DTO、Zod 契约骨架、Eden-TanStack-Query hook 骨架，并能组装 AI 提示词或直接调用 AI 生成分层代码。
 
 全程使用 AST 解析，**绝不用正则匹配业务代码**——注释和字符串里的伪代码不会被误捕获。
 
@@ -45,11 +45,11 @@ api-gen sync             # 2. 扫描目录填充 exportIndex 路径、执行 pip
 api-gen info             # 3. 探测项目结构 → .vscode/api-gen.json（交互确认 AppType）
 api-gen scan             # 4. AST 扫描 Elysia 路由 → .vscode/api-spec.json
 api-gen make-prompt      # 5. 渲染 AI 提示词 → .vscode/ai-prompt.md
-api-gen generate         # 6.（可选）调 AI 生成 dbschema / tbschema
+api-gen generate         # 6.（可选）调 AI 生成 dbschema / zschema
 
 # 增量生成（任选）
-api-gen raw                    # *.dbschema.ts → tbschema/raw/*.dbschema.raw.ts
-api-gen gen-tbschema      # dbschema + raw → *.tbschema.ts 骨架
+api-gen raw                    # *.dbschema.ts → zschema/raw/*.dbschema.raw.ts
+api-gen gen-zschema      # dbschema + raw → *.zschema.ts 骨架
 api-gen link                   # 聚合 controllers → applyAllModules / applyAllControllers
 api-gen gen-hook          # b2b-api controllers → web/b2b-admin Eden-TanStack hooks
 api-gen barrel                 # 级联桶导出 index.ts
@@ -65,9 +65,9 @@ api-gen archive                # 打包成 .tar.gz 部署
 | `info [dir]` | 探测项目结构 → `.vscode/api-gen.json`（交互确认 AppType） |
 | `scan` | Elysia 路由 → `.vscode/api-spec.json` |
 | `make-prompt` | 模板 + 扫描产物 → `.vscode/ai-prompt.md` |
-| `generate` | AI 生成 dbschema / tbschema |
-| `raw` | dbschema → `tbschema/raw/*.dbschema.raw.ts` |
-| `gen-tbschema` | dbschema + raw → `*.tbschema.ts` 骨架（`--force` 覆盖） |
+| `generate` | AI 生成 dbschema / zschema |
+| `raw` | dbschema → `zschema/raw/*.dbschema.raw.ts` |
+| `gen-zschema` | dbschema + raw → `*.zschema.ts` 骨架（`--force` 覆盖） |
 | `link` | b2b-api → `applyAllModules`,web → `applyAllControllers` |
 | `gen-hook` | b2b-api controllers → Eden-TanStack hooks（`--domain` 单域,`--target` web/b2b-admin） |
 | `barrel` | 级联桶导出（`-g` 组,`-d` 预览,`--lib` 仅导出 `@public`） |
@@ -93,7 +93,7 @@ api-gen archive                # 打包成 .tar.gz 部署
 | `service` | 业务逻辑、CRUD、事务 | `<domain>.service.ts` |
 | `repos` | Drizzle 数据访问层 | `<domain>.repos.ts` |
 | `dbschema` | Drizzle `pgTable` 表定义 | `<name>.dbschema.ts` |
-| `tbschema` | TypeBox 契约（请求/响应/查询） | `<name>.tbschema.ts` |
+| `zschema` | Zod 契约（请求/响应/查询） | `<name>.zschema.ts` |
 | `relation` | 外键/联表关联 | `<name>.relation.ts` |
 | `def` | 3 层常量字典（DEF + OPTIONS + GROUPS） | `<name>.def.ts` |
 
@@ -106,7 +106,7 @@ Monorepo 下公共合约层固定在 `packages/contract`，应用在 `apps/*`。
 - [四种 AppType 形态](./docs/app-types.md)
 - [AST 解析底座](./docs/ast-scanner.md)
 - [桶导出](./docs/barrel-export.md) · [sync](./docs/sync.md)
-- [命令:link](./docs/commands/link.md) · [raw](./docs/commands/raw.md) · [gen-tbschema](./docs/commands/gen-tbschema.md) · [gen-hook](./docs/commands/gen-hook.md)
+- [命令:link](./docs/commands/link.md) · [raw](./docs/commands/raw.md) · [gen-zschema](./docs/commands/gen-zschema.md) · [gen-hook](./docs/commands/gen-hook.md)
 - [scan + generate 流程](./docs/scan-and-generate.md)
 - [测试规范](./docs/testing.md)
 

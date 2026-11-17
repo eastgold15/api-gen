@@ -113,8 +113,8 @@ fixtures/tradeflow/
 │   └── b2b-admin/src/hooks/api/  # 前端 hooks 目录(无 modules)
 └── packages/contract/src/
     ├── drizzle/table.dbschema.ts
-    ├── tbschema/(空,gen-tbschema 填)
-    ├── tbschema/raw/(空,raw 填)
+    ├── zschema/(空,gen-zschema 填)
+    ├── zschema/raw/(空,raw 填)
     └── utils/constants/definitions/status.def.ts
 ```
 

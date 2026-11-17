@@ -7,7 +7,7 @@ import archive from "./commands/archive.js";
 import barrel from "./commands/barrel.js";
 import generate from "./commands/generate.js";
 import generateHook from "./commands/generate-hook.js";
-import generateTbschema from "./commands/generate-tbschema.js";
+import generateZschema from "./commands/generate-zschema.js";
 import info from "./commands/info.js";
 import init from "./commands/init.js";
 import link from "./commands/link.js";
@@ -111,7 +111,8 @@ cli.addCommand({
 
 cli.addCommand({
   name: "raw",
-  description: "从 *.dbschema.ts 的 pgTable 派生出 packages/contract/src/tbschema/raw/<name>.dbschema.raw.ts",
+  description:
+      "从 *.dbschema.ts 的建表调用派生出 <zschemaRawDir>/<name>.dbschema.raw.ts(默认 packages/database/src/zschema/raw/)",
   execute: async () => {
     await raw();
     console.log(chalk.green("Raw DTO 文件生成完成。"));
@@ -119,18 +120,18 @@ cli.addCommand({
 });
 
 cli.addCommand({
-  name: "gen-tbschema",
-  description: "从 dbschema + raw 派生 *.tbschema.ts 骨架(需先跑 api-gen raw)",
+  name: "gen-zschema",
+  description: "从 dbschema + raw 派生 *.zschema.ts 骨架(需先跑 api-gen raw)",
   options: [
     { name: "domain", alias: "d", type: String, description: "指定单个 domain" },
-    { name: "force", type: Boolean, description: "覆盖已有 tbschema 文件" },
+    { name: "force", type: Boolean, description: "覆盖已有 zschema 文件" },
   ],
   execute: async ({ options }: Toolbox) => {
-    await generateTbschema({
+    await generateZschema({
       domain: options.domain as string | undefined,
       force: options.force as boolean | undefined,
     });
-    console.log(chalk.green("tbschema 骨架生成完成。"));
+    console.log(chalk.green("zschema 骨架生成完成。"));
   },
 });
 

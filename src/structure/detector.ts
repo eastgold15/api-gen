@@ -68,52 +68,71 @@ function hasDomainController(modulesAbs: string): boolean {
 // 公共合约层扫描
 // ---------------------------------------------------------------------------
 
-/** 扫描公共 packages/contract 层 */
+/**
+ * 扫描公共合约层。
+ *
+ * 支持两种布局:
+ * - 单包:`packages/contract`(dbschema 与 zschema 同树)
+ * - 分离:`packages/database`(dbschema)+ `packages/shared-types`(zschema)
+ */
 function scanCommonLayer(rootDir: string): CommonLayout | null {
   const contractRoot = resolve(rootDir, "packages/contract");
-  if (!existsSync(contractRoot)) return null;
+  const databaseRoot = resolve(rootDir, "packages/database");
+  const sharedTypesRoot = resolve(rootDir, "packages/shared-types");
 
-  const dbschemaFiles = getLayerFilePaths(contractRoot, "dbschema");
-  const tbschemaFiles = getLayerFilePaths(contractRoot, "tbschema");
-  const relationFiles = getLayerFilePaths(contractRoot, "relation");
-  const reposFiles = getLayerFilePaths(contractRoot, "repos");
+  // dbschema 在 contract 或 database 包
+  const dbschemaRoot = existsSync(contractRoot) ? contractRoot : databaseRoot;
+  // zschema 在 contract 或 shared-types 包
+  const zschemaRootBase = existsSync(contractRoot) ? contractRoot : sharedTypesRoot;
+  if (!existsSync(dbschemaRoot) || !existsSync(zschemaRootBase)) return null;
 
-  // tbschemaRoot / tbschemaRawDir:即使目录为空(只有 .gitkeep)也要返回,
-  // 让 generate:tbschema 和 raw 知道把文件写到哪里
-  let tbschemaRoot: string | null = null;
-  let tbschemaRawDir: string | null = null;
-  if (tbschemaFiles.length) {
-    tbschemaRoot = dirname(tbschemaFiles[0]);
-    tbschemaRawDir = join(tbschemaRoot, "raw");
+  const dbschemaFiles = getLayerFilePaths(dbschemaRoot, "dbschema");
+  const zschemaFiles = getLayerFilePaths(zschemaRootBase, "zschema");
+  const relationFiles = getLayerFilePaths(dbschemaRoot, "relation");
+  const reposFiles = getLayerFilePaths(dbschemaRoot, "repos");
+
+  // zschemaRoot / zschemaRawDir:即使目录为空(只有 .gitkeep)也要返回,
+  // 让 generate:zschema 和 raw 知道把文件写到哪里
+  let zschemaRoot: string | null = null;
+  let zschemaRawDir: string | null = null;
+  if (zschemaFiles.length) {
+    zschemaRoot = dirname(zschemaFiles[0]);
   } else {
-    // 没文件 → 直接探测 src/tbschema 目录
-    const candidateTbschema = resolve(contractRoot, "src/tbschema");
-    if (existsSync(candidateTbschema)) {
-      tbschemaRoot = candidateTbschema;
-      tbschemaRawDir = join(candidateTbschema, "raw");
+    // 没文件 → 直接探测 src/zschema 目录
+    const candidateZschema = resolve(zschemaRootBase, "src/zschema");
+    if (existsSync(candidateZschema)) {
+      zschemaRoot = candidateZschema;
     } else {
-      const candidateAtRoot = resolve(contractRoot, "tbschema");
+      const candidateAtRoot = resolve(zschemaRootBase, "zschema");
       if (existsSync(candidateAtRoot)) {
-        tbschemaRoot = candidateAtRoot;
-        tbschemaRawDir = join(candidateAtRoot, "raw");
+        zschemaRoot = candidateAtRoot;
       }
     }
+  }
+  // raw 层跟随 dbschema 所在的包(database);旧布局则与 zschema 同目录
+  if (zschemaRoot) {
+    const rawCandidates = [
+      resolve(dbschemaRoot, "src/zschema/raw"),
+      resolve(dbschemaRoot, "zschema/raw"),
+      join(zschemaRoot, "raw"),
+    ];
+    zschemaRawDir = rawCandidates.find((p) => existsSync(p)) ?? rawCandidates[0];
   }
 
   const allTables: string[] = [];
   for (const sf of dbschemaFiles) allTables.push(...extractTableNames(sf));
-  const contractModules = tbschemaFiles
-    .map((f) => basename(f, ".tbschema.ts"))
+  const contractModules = zschemaFiles
+    .map((f) => basename(f, ".zschema.ts"))
     .sort();
 
   return {
-    rootDir: contractRoot,
+    rootDir: existsSync(contractRoot) ? contractRoot : dbschemaRoot,
     dbschemaFiles,
-    tbschemaFiles,
+    zschemaFiles,
     relationFiles,
     reposFiles,
-    tbschemaRoot,
-    tbschemaRawDir,
+    zschemaRoot,
+    zschemaRawDir,
     existingSchemas: allTables,
     existingContractModules: contractModules,
   };

@@ -69,7 +69,7 @@ function toGeneratorLayout(config: ApiGenRootConfig): GeneratorLayout {
   const existingTables: string[] = [];
   const existingContracts: string[] = [];
 
-  // 从 common 层读取 dbschema 和 tbschema
+  // 从 common 层读取 dbschema 和 zschema
   if (config.common) {
     for (const sf of config.common.dbschemaFiles) {
       try {
@@ -79,7 +79,7 @@ function toGeneratorLayout(config: ApiGenRootConfig): GeneratorLayout {
         console.warn(chalk.yellow(`  [警告] 读取数据表文件失败：${sf}`));
       }
     }
-    for (const cf of config.common.tbschemaFiles) {
+    for (const cf of config.common.zschemaFiles) {
       try {
         const fullPath = resolve(CWD, cf);
         existingContracts.push(readFileSync(fullPath, { encoding: "utf-8" }));

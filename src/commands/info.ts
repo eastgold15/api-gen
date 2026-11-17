@@ -65,11 +65,11 @@ function printLayout(config: ApiGenRootConfig): void {
     commonTable.setHeaders([chalk.bold("公共层"), chalk.bold("值")]);
     commonTable.addRow(["rootDir", fmtVal(c.rootDir)]);
     commonTable.addRow(["dbschemaFiles", fmtList(c.dbschemaFiles.map(f => pathRelativeName(f)))]);
-    commonTable.addRow(["tbschemaFiles", fmtList(c.tbschemaFiles.map(f => pathRelativeName(f)))]);
+    commonTable.addRow(["zschemaFiles", fmtList(c.zschemaFiles.map(f => pathRelativeName(f)))]);
     commonTable.addRow(["relationFiles", fmtList(c.relationFiles.map(f => pathRelativeName(f)))]);
     commonTable.addRow(["reposFiles", fmtList(c.reposFiles.map(f => pathRelativeName(f)))]);
-    commonTable.addRow(["tbschemaRoot", fmtVal(c.tbschemaRoot)]);
-    commonTable.addRow(["tbschemaRawDir", fmtVal(c.tbschemaRawDir)]);
+    commonTable.addRow(["zschemaRoot", fmtVal(c.zschemaRoot)]);
+    commonTable.addRow(["zschemaRawDir", fmtVal(c.zschemaRawDir)]);
     commonTable.addRow(["existingSchemas", fmtList(c.existingSchemas)]);
     commonTable.addRow(["existingContractModules", fmtList(c.existingContractModules)]);
     console.log(commonTable.toString());

@@ -36,6 +36,6 @@
 ## generate
 
 输入：两套配置 + 调 AI（OpenAI 兼容，强制 JSON 返回）。
-输出：把 `schemaAdditions`（追加到 dbschema）/`contractAdditions`（覆盖 tbschema）写盘。
+输出：把 `schemaAdditions`（追加到 dbschema）/`contractAdditions`（覆盖 zschema）写盘。
 
 `callAI()` 在 `src/generator/ai.ts` 实现，含指数退避重试（429 / 5xx 最多 3 次）。返回 JSON 必须含 `schemaAdditions` / `contractAdditions` 数组，每项 `{ path, content }`。

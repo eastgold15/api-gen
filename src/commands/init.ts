@@ -18,12 +18,15 @@ const DEFAULT_CONFIG: ApiConfig = {
     // 约定名组(utils/hooks/...) → 沿用"组名 + 同名目录列表"形式,本项目用不到。
     // 路径形式组(具体到子目录,如 .../constants/definitions) → 空数组 = 自动展开。
     includes: [
-      "packages/contract/src",
+      "packages/database/src",
+      "packages/shared-types/src",
+      // 路径形式组:具体到子目录,空数组 = 由 sync 自动展开
+      "packages/shared-types/src/utils/constants/definitions",
     ],
   },
   pipelines: [
     [
-      { type: "select", glob: "**/*.tbschema.ts" },
+      { type: "select", glob: "**/*.zschema.ts" },
       { type: "prepend", content: "/** biome-ignore-all lint/style/useNamingConvention: 契约文件固定约束 */" },
     ],
   ],

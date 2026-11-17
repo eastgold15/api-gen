@@ -27,14 +27,14 @@ describe("tradeflow fixture (三 app 布局)", () => {
     expect(config.isMonorepo).toBe(true);
   });
 
-  it("common 公共合约层识别 dbschema / tbschema / relation / repos", () => {
+  it("common 公共合约层识别 dbschema / zschema / relation / repos", () => {
     const c = detectLayout(FIXTURE).common;
     expect(c).not.toBeNull();
     expect(c!.dbschemaFiles.length).toBeGreaterThan(0);
     expect(c!.dbschemaFiles[0]).toMatch(/\.dbschema\.ts$/);
-    expect(c!.tbschemaFiles).toBeDefined();
-    expect(c!.tbschemaRoot).toMatch(/tbschema$/);
-    expect(c!.tbschemaRawDir).toMatch(/tbschema\/raw$/);
+    expect(c!.zschemaFiles).toBeDefined();
+    expect(c!.zschemaRoot).toMatch(/zschema$/);
+    expect(c!.zschemaRawDir).toMatch(/zschema\/raw$/);
     expect(c!.existingSchemas).toContain("siteTable");
     expect(c!.existingSchemas).toContain("customerTable");
     expect(c!.existingSchemas).toContain("heroCardTable");

@@ -2,12 +2,12 @@ import { describe, it, expect } from "bun:test";
 import { LAYERS } from "../utils/tree-builder.js";
 
 describe("LAYERS 数组(tradeflow 约定)", () => {
-  it("包含 controller / service / repos / dbschema / tbschema / relation", () => {
+  it("包含 controller / service / repos / dbschema / zschema / relation", () => {
     expect(LAYERS).toContain("controller");
     expect(LAYERS).toContain("service");
     expect(LAYERS).toContain("repos");
     expect(LAYERS).toContain("dbschema");
-    expect(LAYERS).toContain("tbschema");
+    expect(LAYERS).toContain("zschema");
     expect(LAYERS).toContain("relation");
   });
 

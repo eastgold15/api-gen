@@ -96,7 +96,7 @@ function buildProjectContext(config: ApiGenRootConfig): ProjectContext {
   if (config.common) {
     schemaFileList = config.common.dbschemaFiles;
     relationFileList = config.common.relationFiles;
-    contractFileList = config.common.tbschemaFiles;
+    contractFileList = config.common.zschemaFiles;
     tableNames = config.common.existingSchemas;
     moduleNames = config.common.existingContractModules;
   }

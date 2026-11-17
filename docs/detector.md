@@ -44,14 +44,14 @@ existsSync(join(rootDir, "packages")) || existsSync(join(rootDir, "apps"))
 
 `packages/contract/` 必须存在，否则 `common = null`。
 
-扫描所有 `*.dbschema.ts` / `*.tbschema.ts` / `*.relation.ts` / `*.repos.ts`（递归），同时 AST 提取 dbschema 内的 `*Table` 变量名 → `existingSchemas`。
+扫描所有 `*.dbschema.ts` / `*.zschema.ts` / `*.relation.ts` / `*.repos.ts`（递归），同时 AST 提取 dbschema 内的 `*Table` 变量名 → `existingSchemas`。
 
-`tbschemaRoot` / `tbschemaRawDir` 计算优先级：
-1. 已存在的 `*.tbschema.ts` → 父目录 = tbschemaRoot
-2. `src/tbschema/` 目录存在 → tbschemaRoot = src/tbschema
-3. `tbschema/` 目录存在 → tbschemaRoot = tbschema
+`zschemaRoot` / `zschemaRawDir` 计算优先级：
+1. 已存在的 `*.zschema.ts` → 父目录 = zschemaRoot
+2. `src/zschema/` 目录存在 → zschemaRoot = src/zschema
+3. `zschema/` 目录存在 → zschemaRoot = zschema
 
-两者都返回 `tbschemaRoot/raw`。
+两者都返回 `zschemaRoot/raw`。
 
 ## 跳过黑名单
 

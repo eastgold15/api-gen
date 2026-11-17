@@ -232,7 +232,7 @@ export function buildSystemPrompt(layout: ProjectLayout): string {
 
   // -- 已有接口合约 -----------------------------------------------
   if (layout.existingContracts.length > 0) {
-    lines.push("## 现有接口 TypeBox 合约");
+    lines.push("## 现有接口 Zod 合约");
     lines.push("");
     for (const c of layout.existingContracts) {
       lines.push("```ts");
@@ -263,7 +263,7 @@ export function buildSystemPrompt(layout: ProjectLayout): string {
   lines.push("2. 严格遵循项目现有命名规范。");
   lines.push("3. 尽可能复用已有数据表与合约，禁止重复定义。");
   lines.push("4. 数据表使用 Drizzle ORM 标准写法（pgTable、uuid、text、timestamp 等）。");
-  lines.push("5. 接口合约使用项目统一 TypeBox 模板格式。");
+  lines.push("5. 接口合约使用项目统一 Zod 模板格式。");
 
   return lines.join("\n");
 }
@@ -277,7 +277,7 @@ export function buildSystemPrompt(layout: ProjectLayout): string {
  *
  * 告知 AI 需要产出内容：
  *   - 新增/修改 Drizzle 数据表定义
- *   - TypeBox 接口合约文件
+ *   - Zod 接口合约文件
  */
 export function buildGenerationPrompt(
   specs: ControllerSpec[],
@@ -287,7 +287,7 @@ export function buildGenerationPrompt(
 
   lines.push("# 代码生成需求");
   lines.push("");
-  lines.push("为下方接口路由生成配套数据表与 TypeBox 合约文件。\n");
+  lines.push("为下方接口路由生成配套数据表与 Zod 合约文件。\n");
 
   // -- 公共分析上下文 --------------------------------------------------
   if (sharedInfo.trim()) {
@@ -318,7 +318,7 @@ export function buildGenerationPrompt(
           "tables/example.table.ts": "// Drizzle pgTable 表定义代码 ...",
         },
         contractAdditions: {
-          "modules/example.contract.ts": "// TypeBox 接口合约代码 ...",
+          "modules/example.contract.ts": "// Zod 接口合约代码 ...",
         },
         summary: "生成内容简要说明",
       },
@@ -331,7 +331,7 @@ export function buildGenerationPrompt(
   lines.push("### 字段说明");
   lines.push("");
   lines.push("- `schemaAdditions`：文件相对路径 => 文件内容，存放新增/修改的数据表定义。");
-  lines.push("- `contractAdditions`：文件相对路径 => 文件内容，存放新增/修改的 TypeBox 接口合约。");
+  lines.push("- `contractAdditions`：文件相对路径 => 文件内容，存放新增/修改的 Zod 接口合约。");
   lines.push("- `summary`：一段文字说明本次生成的内容与设计思路。");
   lines.push("");
   lines.push("## 硬性约束");

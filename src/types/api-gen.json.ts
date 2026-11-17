@@ -22,19 +22,19 @@ export type AppType = "b2b-api" | "web" | "b2b-admin" | "frontend";
 /** 全局公共层(单仓库、多仓库通用) */
 export interface CommonLayout {
   rootDir: string | null;
-  /** drizzle 表定义文件: packages/contract/src/drizzle/*.dbschema.ts */
+  /** drizzle 表定义文件: packages/database/src/drizzle/*.dbschema.ts */
   dbschemaFiles: string[];
-  /** typebox 契约文件: packages/contract/src/tbschema/*.tbschema.ts */
-  tbschemaFiles: string[];
+  /** zod 契约文件: packages/shared-types/src/zschema/*.zschema.ts */
+  zschemaFiles: string[];
   /** drizzle 关系定义文件: *.relation.ts */
   relationFiles: string[];
   /** 复杂查询隔离文件: *.repos.ts(可选) */
   reposFiles: string[];
-  /** tbschema 根目录,通常是 packages/contract/src/tbschema */
-  tbschemaRoot: string | null;
-  /** raw 基础字段目录,通常是 packages/contract/src/tbschema/raw
+  /** zschema 根目录,通常是 packages/shared-types/src/zschema */
+  zschemaRoot: string | null;
+  /** raw 基础字段目录,通常是 packages/database/src/zschema/raw
    *  raw 命令把 *.dbschema.ts 派生成这里 */
-  tbschemaRawDir: string | null;
+  zschemaRawDir: string | null;
   existingSchemas: string[];
   existingContractModules: string[];
 }
@@ -75,7 +75,7 @@ export interface AppLayout {
  * ```json
  * {
  *   "includes": ["utils", "constants/definitions"],
- *   "utils": ["packages/contract/src/utils"],
+ *   "utils": ["packages/shared-types/src/utils"],
  *   "constants/definitions": []
  * }
  * ```

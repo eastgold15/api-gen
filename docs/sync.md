@@ -9,7 +9,7 @@
 ```json
 "pipelines": [
   [
-    { "type": "select", "glob": "**/*.tbschema.ts" },
+    { "type": "select", "glob": "**/*.zschema.ts" },
     { "type": "prepend", "content": "/** biome-ignore-all lint/style/useNamingConvention: 契约文件固定约束 */" }
   ]
 ]
@@ -21,7 +21,7 @@
 - `append`（`content`）— 文件尾追加内容
 - `replace`（`from` / `to`）— 文本替换
 
-目前 `init` 默认给 `*.tbschema.ts` 加 biome-ignore 头（TypeBox 契约里的 `XxxTBSchema` 大写无法绕过 lint）。
+目前 `init` 默认给 `*.zschema.ts` 加 biome-ignore 头（Zod 契约里的 `XxxZSchema` 大写无法绕过 lint）。
 
 ## exportIndex 填充
 
