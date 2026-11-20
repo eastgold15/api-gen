@@ -41,6 +41,8 @@ interface ControllerSpec {
 interface AIAdditions {
   schemaAdditions?: Record<string, string>;
   contractAdditions?: Record<string, string>;
+  /** HTTP 契约层文件(app 的 <domain>.model.ts) */
+  modelAdditions?: Record<string, string>;
   summary?: string;
 }
 
@@ -361,6 +363,21 @@ export async function generateCommand(): Promise<void> {
         } else {
           createdFiles.push(relPath);
           console.log(chalk.dim(`  + 新建合约文件：${relPath}`));
+        }
+      }
+    }
+
+    if (aiResponse.modelAdditions) {
+      for (const [relPath, content] of Object.entries(aiResponse.modelAdditions)) {
+        if (!content?.trim()) continue;
+        const alreadyExists = existsSync(resolve(CWD, relPath));
+        writeContractFile(relPath, content);
+        if (alreadyExists) {
+          modifiedFiles.push(relPath);
+          console.log(chalk.dim(`  ~ 修改契约层文件：${relPath}`));
+        } else {
+          createdFiles.push(relPath);
+          console.log(chalk.dim(`  + 新建契约层文件：${relPath}`));
         }
       }
     }

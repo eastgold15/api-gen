@@ -3,11 +3,27 @@ import { resolve, join, basename } from "@visulima/path";
 
 // 业务分层后缀
 // - controller / service / repos: 业务代码
+// - model:                     HTTP 契约层(导出 XxxModel 与 XxxModelContract)
 // - dbschema:                  drizzle 表定义
-// - zschema:                  zod 契约(导出 XxxZSchema 与 XxxContract)
+// - zschema:                  zod 实体层(导出 XxxZSchema 与 XxxContract)
 // - relation:                  drizzle 关系定义
-export type Layer = "controller" | "service" | "repos" | "dbschema" | "zschema" | "relation";
-export const LAYERS: Layer[] = ["controller", "service", "repos", "dbschema", "zschema", "relation"];
+export type Layer =
+  | "controller"
+  | "service"
+  | "repos"
+  | "model"
+  | "dbschema"
+  | "zschema"
+  | "relation";
+export const LAYERS: Layer[] = [
+  "controller",
+  "service",
+  "repos",
+  "model",
+  "dbschema",
+  "zschema",
+  "relation",
+];
 export const SKIP_DIRS = new Set(["node_modules", "dist", ".vscode", ".git", "scripts", ".next", ".agengt", ".claude", ".lingma", "turbo"]);
 
 type DirInfo = {
@@ -20,7 +36,15 @@ type DirInfo = {
 function scanDirTree(rootAbs: string, rootRel: string): DirInfo {
   const dir: DirInfo = {
     relative: rootRel,
-    layers: { controller: [], service: [], repos: [], dbschema: [], zschema: [], relation: [] },
+    layers: {
+      controller: [],
+      service: [],
+      repos: [],
+      model: [],
+      dbschema: [],
+      zschema: [],
+      relation: [],
+    },
     children: [],
   };
   const entries = readdirSync(rootAbs, { withFileTypes: true });

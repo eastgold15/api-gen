@@ -164,18 +164,50 @@ describe("tradeflow 完整流程 (3 app 布局)", () => {
   });
 
   // -----------------------------------------------------------------------
-  it("gen-zschema 从 dbschema + raw 派生 zschema 骨架", async () => {
+  it("gen-zschema 生成实体层 zschema(只放全字段,不含 HTTP 契约)", async () => {
     await runCmd(root, "../commands/generate-zschema.js", "generateZschemaCommand");
     const tbs = join(root, "packages/shared-types/src/zschema/site.zschema.ts");
     expect(existsSync(tbs)).toBe(true);
     const content = readFileSync(tbs, "utf-8");
     expect(content).toContain("SiteZSchema");
     expect(content).toContain("SiteContract");
-    expect(content).toContain("Response");
-    expect(content).toContain("Create");
-    expect(content).toContain("ListQuery");
+    expect(content).toContain("Entity:");
+    expect(content).toContain("Insert:");
+    expect(content).toContain("Query:");
     expect(content).toContain("SiteRawInsert");
     expect(content).toContain("SiteRawSelect");
+    // 实体层不放 HTTP 契约
+    expect(content).not.toContain("Create:");
+    expect(content).not.toContain("ListQuery:");
+    expect(content).not.toContain("ListResponse:");
+    expect(content).not.toContain("ResultSchema");
+  });
+
+  // -----------------------------------------------------------------------
+  it("gen-zschema 生成 app 级 model.ts(HTTP 契约层)", async () => {
+    // b2b-api 的 site 模块 + web 的 site-product 模块
+    const b2bModel = join(root, "apps/b2b-api/src/modules/site/site.model.ts");
+    const webModel = join(root, "apps/web/src/server/modules/site-product/site-product.model.ts");
+    expect(existsSync(b2bModel)).toBe(true);
+    expect(existsSync(webModel)).toBe(true);
+
+    const content = readFileSync(b2bModel, "utf-8");
+    expect(content).toContain("SiteModel");
+    expect(content).toContain("SiteModelContract");
+    // HTTP 契约的键
+    expect(content).toContain("Create:");
+    expect(content).toContain("Update:");
+    expect(content).toContain("ListQuery:");
+    expect(content).toContain("ListResponse:");
+    expect(content).toContain("Response:");
+    expect(content).toContain("IdParam:");
+    // 信封 + coerce 工具
+    expect(content).toContain("ResultSchema");
+    expect(content).toContain("PageResultSchema");
+    expect(content).toContain("QueryShape");
+    // 服务端字段白名单
+    expect(content).toContain("SERVER_FIELDS");
+    expect(content).toContain("id: true");
   });
 
   // -----------------------------------------------------------------------
@@ -226,9 +258,17 @@ describe("tradeflow 完整流程 (3 app 布局)", () => {
     expect(content).not.toContain("eden.api.v1");
     expect(content).toContain("queryOptions");
     expect(content).toContain("mutationOptions");
+    // 新写法:剥壳封装 + Eden 推导类型,不用裸 useQuery / 不用 as unknown as
+    expect(content).toContain("useApiQuery");
+    expect(content).toContain("useApiMutation");
+    expect(content).not.toContain("as unknown as");
+    expect(content).not.toContain("toast.");
     // 函数体完整(防回归:模板曾漏 `{`)
-    expect(content).toMatch(/useCurrentSite\(\) \{\s+const eden/);
-    expect(content).toMatch(/useSiteDetail\(id: string\) \{\s+const eden/);
+    expect(content).toMatch(/useCurrentSite\(enabled = true\) \{\s+const eden/);
+    expect(content).toMatch(/useSiteDetail\(id: string, enabled = !!id\) \{\s+const eden/);
+    // 路径参数渲染成调用形式(不是 `eden.site.({ id })` 那种非法语法)
+    expect(content).toContain("eden.site({ id }).get");
+    expect(content).not.toContain("eden.site.({ id })");
   });
 
   // -----------------------------------------------------------------------

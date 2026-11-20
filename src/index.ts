@@ -121,17 +121,29 @@ cli.addCommand({
 
 cli.addCommand({
   name: "gen-zschema",
-  description: "从 dbschema + raw 派生 *.zschema.ts 骨架(需先跑 api-gen raw)",
+  description:
+    "生成契约层:实体层 *.zschema.ts(shared-types,只放全字段) + HTTP 契约层 <domain>.model.ts(app modules 内,裁剪后的 body/query/params/response)。需先跑 api-gen raw",
   options: [
     { name: "domain", alias: "d", type: String, description: "指定单个 domain" },
-    { name: "force", type: Boolean, description: "覆盖已有 zschema 文件" },
+    { name: "app", alias: "a", type: String, description: "只给指定 app 生成 model.ts" },
+    {
+      name: "layer",
+      alias: "l",
+      type: String,
+      description: "entity(实体层) | model(HTTP 契约层) | both(默认)",
+    },
+    { name: "force", type: Boolean, description: "覆盖已有契约文件" },
+    { name: "create", type: Boolean, description: "允许给没有 controller 的 domain 建模块目录并生成 model.ts" },
   ],
   execute: async ({ options }: Toolbox) => {
     await generateZschema({
       domain: options.domain as string | undefined,
+      app: options.app as string | undefined,
+      layer: options.layer as "entity" | "model" | "both" | undefined,
       force: options.force as boolean | undefined,
+      create: options.create as boolean | undefined,
     });
-    console.log(chalk.green("zschema 骨架生成完成。"));
+    console.log(chalk.green("契约层(zschema + model)生成完成。"));
   },
 });
 

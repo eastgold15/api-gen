@@ -1,6 +1,28 @@
 import { parseTsFile, traverseAst, getStringValue, getObjectProperty } from "../utils/ast-scanner.js";
-import { readdirSync, existsSync } from "node:fs";
-import { resolve, join } from "@visulima/path";
+import { readdirSync, existsSync, readFileSync } from "node:fs";
+import { resolve, join, basename, dirname } from "@visulima/path";
+
+/**
+ * 路由入参/出参的 schema 引用
+ *
+ * 新架构(契约三层分离)里,controller 的 body/query/params/response
+ * 全部指向同目录 `<domain>.model.ts` 里的 `XxxModel.<Key>`。
+ */
+export interface RouteSchemaRef {
+  /** 表达式源码文本,如 "AdModel.Create" */
+  text: string;
+  /** 成员表达式的对象名,如 "AdModel"(内联 zod 对象则为 null) */
+  owner: string | null;
+  /** 成员表达式的键名,如 "Create"(内联 zod 对象则为 null) */
+  key: string | null;
+}
+
+export interface RouteSchemaRefs {
+  body?: RouteSchemaRef;
+  query?: RouteSchemaRef;
+  params?: RouteSchemaRef;
+  response?: RouteSchemaRef;
+}
 
 export interface RouteSpec {
   method: string;
@@ -9,12 +31,18 @@ export interface RouteSpec {
   description: string;
   tags: string[];
   permissions: string[];
+  /** 路由挂载的 schema(body/query/params/response) */
+  schemaRefs: RouteSchemaRefs;
 }
 
 export interface ControllerSpec {
   name: string;
   prefix: string;
   routes: RouteSpec[];
+  /** controller 文件所在目录的 kebab 名(= 模块名 = URL 段 = hook 文件名) */
+  domain: string;
+  /** controller 文件绝对路径 */
+  filePath: string;
 }
 
 const HTTP_METHODS = new Set(["get", "post", "put", "patch", "delete"]);
@@ -36,10 +64,37 @@ function findNewElysia(node: any): any | null {
 export function scanController(filePath: string): ControllerSpec {
   const absPath = resolve(filePath);
   const { program } = parseTsFile(absPath);
+  const source = readFileSync(absPath, { encoding: "utf-8" });
 
   let controllerName = "";
   let prefix = "";
   const routes: RouteSpec[] = [];
+
+  /**
+   * 从 AST 节点取源码文本(oxc 节点带 start/end 偏移)
+   */
+  const nodeText = (node: any): string => {
+    if (!node || typeof node.start !== "number" || typeof node.end !== "number") {
+      return "";
+    }
+    return source.slice(node.start, node.end).trim();
+  };
+
+  /**
+   * 取 schema 引用:成员表达式("AdModel.Create")拆成 owner/key;
+   * 内联对象(如 t.Object({...}) / z.object({...}))只留文本。
+   */
+  const toSchemaRef = (node: any): RouteSchemaRef | undefined => {
+    if (!node) return undefined;
+    const text = nodeText(node);
+    if (!text) return undefined;
+    if (node.type === "MemberExpression" && !node.computed) {
+      const owner = node.object?.type === "Identifier" ? node.object.name : null;
+      const key = node.property?.type === "Identifier" ? node.property.name : null;
+      if (owner && key) return { text, owner, key };
+    }
+    return { text, owner: null, key: null };
+  };
 
   traverseAst(program, (node) => {
     // 匹配 new Elysia({ prefix: "" }) 及链式调用
@@ -76,10 +131,18 @@ export function scanController(filePath: string): ControllerSpec {
       let description = "";
       const tags: string[] = [];
       const permissions: string[] = [];
+      const schemaRefs: RouteSchemaRefs = {};
 
-      // 第三个参数是路由配置对象 { detail, allPermissions }
-      if (args.length >= 3 && args[2].type === "ObjectExpression") {
-        const configObj = args[2];
+      // Elysia 的路由配置对象是**第二个**参数:`.get(path, { detail, body, ... }, handler)`。
+      // 少数写法把配置放第三个,这里两个位置都兜一下。
+      const configObj =
+        args[1]?.type === "ObjectExpression"
+          ? args[1]
+          : args[2]?.type === "ObjectExpression"
+            ? args[2]
+            : null;
+
+      if (configObj) {
         const detailObj = getObjectProperty(configObj, "detail");
         if (detailObj?.type === "ObjectExpression") {
           const sNode = getObjectProperty(detailObj, "summary");
@@ -101,6 +164,16 @@ export function scanController(filePath: string): ControllerSpec {
             if (p) permissions.push(p);
           });
         }
+
+        // 契约挂载点:body / query / params / response
+        const bodyRef = toSchemaRef(getObjectProperty(configObj, "body"));
+        if (bodyRef) schemaRefs.body = bodyRef;
+        const queryRef = toSchemaRef(getObjectProperty(configObj, "query"));
+        if (queryRef) schemaRefs.query = queryRef;
+        const paramsRef = toSchemaRef(getObjectProperty(configObj, "params"));
+        if (paramsRef) schemaRefs.params = paramsRef;
+        const responseRef = toSchemaRef(getObjectProperty(configObj, "response"));
+        if (responseRef) schemaRefs.response = responseRef;
       }
 
       routes.push({
@@ -110,6 +183,7 @@ export function scanController(filePath: string): ControllerSpec {
         description,
         tags,
         permissions,
+        schemaRefs,
       });
     }
   });
@@ -118,6 +192,8 @@ export function scanController(filePath: string): ControllerSpec {
     name: controllerName,
     prefix,
     routes,
+    domain: basename(dirname(absPath)),
+    filePath: absPath,
   };
 }
 

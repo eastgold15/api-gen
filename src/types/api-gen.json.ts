@@ -35,6 +35,11 @@ export interface CommonLayout {
   /** raw 基础字段目录,通常是 packages/database/src/zschema/raw
    *  raw 命令把 *.dbschema.ts 派生成这里 */
   zschemaRawDir: string | null;
+  /** app 级 model.ts 里 import raw 的说明符,例如 "@workspace/database/zschema"。
+   *  探测不到(单包布局 / 包未导出 ./zschema)时为 null,生成器回退到相对路径 */
+  rawImportPath: string | null;
+  /** app 级 model.ts 里 import 信封/工具的说明符,例如 "@workspace/shared-types/utils" */
+  sharedTypesUtilsImport: string | null;
   existingSchemas: string[];
   existingContractModules: string[];
 }
@@ -62,6 +67,26 @@ export interface AppLayout {
   controllersDir: string | null;
   /** service 与 controller 同目录,本字段保留为 null */
   serviceDir: string | null;
+  /** HTTP 契约层文件: <modulesDir>/<domain>/<domain>.model.ts */
+  modelFiles: string[];
+  /** 已有 HTTP 契约的 domain(kebab 名),与 controller 一一对应 */
+  modelModules: string[];
+}
+
+/**
+ * 前端 hook 生成配置
+ *
+ * 新架构下 hook 的类型**全部从 Eden 推导**,不手写响应类型、不用 `as unknown as` cast、
+ * query 参数平铺(不包 `{ query: ... }`)。这里只配置"封装 hook 从哪来"。
+ */
+export interface HookConfig {
+  /** 剥壳封装 hook 的 import 路径,例如 "@workspace/ui/hooks"。
+   *  留空 = 不剥壳,直接用 @tanstack/react-query 的 useQuery / useMutation */
+  apiHooksImport?: string;
+  /** Eden client 的 import 路径,例如 "@/lib/rpc" */
+  rpcImport?: string;
+  /** 列表/详情的 staleTime(毫秒) */
+  staleTime?: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -120,7 +145,16 @@ export interface ApiConfig {
    *  缺省空串 = 直接挂载,无版本号。
    *  示例:"api" (prefix: "/api") / "api.v1" (prefix: "/api/v1") */
   edenPrefix?: string;
+  /** 前端 hook 生成配置(gen-hook 用) */
+  hooks?: HookConfig;
 }
+
+/** hook 配置默认值(生成器与 init 共用) */
+export const DEFAULT_HOOK_CONFIG: Required<HookConfig> = {
+  apiHooksImport: "@workspace/ui/hooks",
+  rpcImport: "@/lib/rpc",
+  staleTime: 5 * 60 * 1000,
+};
 
 /** 全局根配置:给 AI 看的项目结构(api-gen.json) */
 export interface ApiGenRootConfig {
