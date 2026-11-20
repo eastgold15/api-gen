@@ -20,10 +20,10 @@ function readApiSpec(specPath: string): ApiSpec {
 function buildAppListText(apps: ApiSpec["projectContext"]["apps"]): string {
   return apps
     .map((app) => {
-      return format("- 应用名：%s\n  controller目录：%s\n  server目录：%s", [
+      return format("- 应用名：%s（%s）\n  modules 目录：%s", [
         app.appName,
-        app.controllerDir ?? "无",
-        app.serviceDir ?? "无",
+        app.appType,
+        app.modulesDir ?? "无",
       ]);
     })
     .join("\n");
@@ -58,6 +58,7 @@ export async function makePromptCommand(tag?: string, singlePath?: string) {
   const schemaCodeBlock = buildCodeBlock(ctx.db.schemaFileList, ctx.db.schemaSourceTexts);
   const relationCodeBlock = buildCodeBlock(ctx.db.relationFileList, ctx.db.relationSourceTexts);
   const contractCodeBlock = buildCodeBlock(ctx.contract.contractFileList, ctx.contract.sourceTexts);
+  const modelCodeBlock = buildCodeBlock(ctx.models.modelFileList, ctx.models.sourceTexts);
 
   const vars: PromptTemplateVars = {
     PROJECT_NAME: spec.projectName,
@@ -67,6 +68,8 @@ export async function makePromptCommand(tag?: string, singlePath?: string) {
     DB_RELATION_CODE_BLOCKS: relationCodeBlock,
     CONTRACT_MODULE_LIST: ctx.contract.moduleNames.join(", "),
     CONTRACT_CODE_BLOCKS: contractCodeBlock,
+    MODEL_MODULE_LIST: ctx.models.moduleNames.join(", "),
+    MODEL_CODE_BLOCKS: modelCodeBlock,
     APP_LIST_TEXT: buildAppListText(ctx.apps),
     API_ROUTES_JSON: JSON.stringify(targetRoutes, null, 2),
   };

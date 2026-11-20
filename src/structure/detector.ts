@@ -64,6 +64,54 @@ function hasDomainController(modulesAbs: string): boolean {
   return false;
 }
 
+/**
+ * 扫描 modules 目录下的 HTTP 契约层文件 `<domain>/<domain>.model.ts`
+ *
+ * 新架构(契约三层分离)里,model.ts 与 controller.ts 同目录成对出现。
+ */
+function scanModelFiles(modulesAbs: string): { files: string[]; domains: string[] } {
+  if (!existsSync(modulesAbs)) return { files: [], domains: [] };
+  const files: string[] = [];
+  const domains: string[] = [];
+  let entries: import("node:fs").Dirent[];
+  try {
+    entries = readdirSync(modulesAbs, { withFileTypes: true });
+  } catch {
+    return { files: [], domains: [] };
+  }
+  for (const entry of entries) {
+    if (!entry.isDirectory()) continue;
+    if (SKIP_DIRS.has(entry.name)) continue;
+    if (entry.name.startsWith("_")) continue;
+    const modelFile = join(modulesAbs, entry.name, `${entry.name}.model.ts`);
+    if (existsSync(modelFile)) {
+      files.push(modelFile);
+      domains.push(entry.name);
+    }
+  }
+  return { files, domains };
+}
+
+/**
+ * 读 package.json 的 name 与 exports 子路径列表
+ *
+ * 用途:推导 app 层 model.ts 里的 import 说明符
+ * (例如 database 包名 "@workspace/database" + exports 里有 "./zschema"
+ *   → app 里写 `from "@workspace/database/zschema"`)。
+ */
+function readPackageInfo(pkgDir: string): { name: string | null; exports: string[] } {
+  const pkgPath = join(pkgDir, "package.json");
+  if (!existsSync(pkgPath)) return { name: null, exports: [] };
+  try {
+    const pkg = JSON.parse(readFileSync(pkgPath, "utf-8"));
+    const exportsList =
+      pkg.exports && typeof pkg.exports === "object" ? Object.keys(pkg.exports) : [];
+    return { name: pkg.name ?? null, exports: exportsList };
+  } catch {
+    return { name: null, exports: [] };
+  }
+}
+
 // ---------------------------------------------------------------------------
 // 公共合约层扫描
 // ---------------------------------------------------------------------------
@@ -125,6 +173,18 @@ function scanCommonLayer(rootDir: string): CommonLayout | null {
     .map((f) => basename(f, ".zschema.ts"))
     .sort();
 
+  // app 层 model.ts 的 import 说明符(探测不到就留 null,生成器回退相对路径)
+  const databasePkg = readPackageInfo(dbschemaRoot);
+  const sharedTypesPkg = readPackageInfo(zschemaRootBase);
+  const rawImportPath =
+    databasePkg.name && databasePkg.exports.includes("./zschema")
+      ? `${databasePkg.name}/zschema`
+      : null;
+  const sharedTypesUtilsImport =
+    sharedTypesPkg.name && sharedTypesPkg.exports.includes("./utils")
+      ? `${sharedTypesPkg.name}/utils`
+      : null;
+
   return {
     rootDir: existsSync(contractRoot) ? contractRoot : dbschemaRoot,
     dbschemaFiles,
@@ -133,6 +193,8 @@ function scanCommonLayer(rootDir: string): CommonLayout | null {
     reposFiles,
     zschemaRoot,
     zschemaRawDir,
+    rawImportPath,
+    sharedTypesUtilsImport,
     existingSchemas: allTables,
     existingContractModules: contractModules,
   };
@@ -200,6 +262,9 @@ function scanMonorepoApp(appRootAbs: string): AppLayout | null {
   if (!probed.modulesDir && !existsSync(resolve(appRootAbs, "src/hooks/api"))) {
     return null;
   }
+  const models = probed.modulesDir
+    ? scanModelFiles(probed.modulesDir)
+    : { files: [], domains: [] };
   return {
     appName,
     appType: probed.appType,
@@ -210,12 +275,17 @@ function scanMonorepoApp(appRootAbs: string): AppLayout | null {
     // 旧消费方字段(指向 modulesDir,link 仍用)
     controllersDir: probed.modulesDir,
     serviceDir: null,
+    modelFiles: models.files,
+    modelModules: models.domains,
   };
 }
 
 /** 扫描单仓库项目,生成虚拟 main 应用 */
 function scanSingleApp(rootDir: string): AppLayout | null {
   const probed = probeAppType(rootDir, "main");
+  const models = probed.modulesDir
+    ? scanModelFiles(probed.modulesDir)
+    : { files: [], domains: [] };
   return {
     appName: "main",
     appType: probed.appType,
@@ -225,6 +295,8 @@ function scanSingleApp(rootDir: string): AppLayout | null {
     importAlias: probed.importAlias,
     controllersDir: probed.modulesDir,
     serviceDir: null,
+    modelFiles: models.files,
+    modelModules: models.domains,
   };
 }
 

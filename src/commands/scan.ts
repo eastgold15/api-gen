@@ -1,6 +1,7 @@
 import { resolve } from "@visulima/path";
 import { readFileSync, writeFileSync } from "@visulima/fs";
 import { existsSync, readdirSync } from "node:fs";
+import { basename, dirname } from "@visulima/path";
 import chalk from "@visulima/colorize";
 import { createTable } from "@visulima/tabular";
 import { format } from "@visulima/fmt";
@@ -20,6 +21,10 @@ export interface AppRouteGroup {
   aggregateIndex: string | null;
   controllersDir: string | null;
   serviceDir: string | null;
+  /** 该 app 的 HTTP 契约层文件 <domain>/<domain>.model.ts */
+  modelFiles: string[];
+  /** 该 app 已有 model.ts 的 domain(kebab) */
+  modelModules: string[];
   controllers: ControllerSpec[];
   routes: RouteSpec[];
   groupedByTag: Record<string, RouteSpec[]>;
@@ -27,7 +32,11 @@ export interface AppRouteGroup {
 
 export interface ProjectContext {
   structureTree: string;
-  apps: { appName: string; controllerDir: string | null; serviceDir: string | null }[];
+  apps: {
+    appName: string;
+    appType: string;
+    modulesDir: string | null;
+  }[];
   db: {
     tableNames: string[];
     schemaFileList: string[];
@@ -38,6 +47,12 @@ export interface ProjectContext {
   contract: {
     moduleNames: string[];
     contractFileList: string[];
+    sourceTexts: string[];
+  };
+  /** HTTP 契约层(app 的 <domain>.model.ts) */
+  models: {
+    moduleNames: string[];
+    modelFileList: string[];
     sourceTexts: string[];
   };
 }
@@ -83,8 +98,8 @@ function readFileTexts(absPaths: string[]): string[] {
 function buildProjectContext(config: ApiGenRootConfig): ProjectContext {
   const apps = config.apps.map((a: AppLayout) => ({
     appName: a.appName,
-    controllerDir: a.controllersDir,
-    serviceDir: a.serviceDir,
+    appType: a.appType,
+    modulesDir: a.modulesDir,
   }));
 
   let schemaFileList: string[] = [];
@@ -101,6 +116,16 @@ function buildProjectContext(config: ApiGenRootConfig): ProjectContext {
     moduleNames = config.common.existingContractModules;
   }
 
+  // HTTP 契约层(app 的 <domain>.model.ts)—— 逐 app 收集
+  const modelFileList: string[] = [];
+  const modelModuleNames: string[] = [];
+  for (const app of config.apps) {
+    for (const file of app.modelFiles ?? []) {
+      modelFileList.push(file);
+      modelModuleNames.push(`${app.appName}/${basename(dirname(file))}`);
+    }
+  }
+
   return {
     structureTree: config.structureTree,
     apps,
@@ -115,6 +140,11 @@ function buildProjectContext(config: ApiGenRootConfig): ProjectContext {
       moduleNames,
       contractFileList,
       sourceTexts: readFileTexts(contractFileList),
+    },
+    models: {
+      moduleNames: modelModuleNames,
+      modelFileList,
+      sourceTexts: readFileTexts(modelFileList),
     },
   };
 }
@@ -152,6 +182,8 @@ function scanApp(config: ApiGenRootConfig, app: AppLayout, cwd: string): AppRout
     aggregateIndex: app.aggregateIndex,
     controllersDir: app.controllersDir,
     serviceDir: app.serviceDir,
+    modelFiles: app.modelFiles ?? [],
+    modelModules: app.modelModules ?? [],
     controllers,
     routes,
     groupedByTag,

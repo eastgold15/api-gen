@@ -280,6 +280,26 @@ function planForApp(app: AppLayout): LinkPlan {
   };
 }
 
+/**
+ * 找出缺 `<domain>.model.ts` 的 domain(新架构:HTTP 契约层与 controller 同目录成对)
+ *
+ * @param files         扫描到的 controller 列表
+ * @param modulesDir    modules 根目录绝对路径
+ * @returns 缺失的 model 文件相对路径列表(相对 modulesDir)
+ */
+export function collectMissingModels(files: ControllerFile[], modulesDir: string): string[] {
+  const missing: string[] = [];
+  for (const f of files) {
+    const domainDir = dirname(f.relativePath);
+    const domainName = basename(f.relativePath).replace(/\.controller\.ts$/, "");
+    const modelFile = join(modulesDir, domainDir, `${domainName}.model.ts`);
+    if (!existsSync(modelFile)) {
+      missing.push(`${domainDir}/${domainName}.model.ts`);
+    }
+  }
+  return missing;
+}
+
 // ---------------------------------------------------------------------------
 // 主入口
 // ---------------------------------------------------------------------------
@@ -317,6 +337,21 @@ export async function linkCommand(): Promise<void> {
 
     const files = discoverControllers(modulesDir, plan.importPrefix);
     const disambiguated = disambiguateNames(files);
+
+    // 新架构(契约三层分离):每个 domain 的 HTTP 契约在同目录的 <domain>.model.ts,
+    // 缺了就提醒补 —— controller 的 body/query/params/response 全从那里取。
+    const missingModels = collectMissingModels(files, modulesDir);
+    if (missingModels.length > 0) {
+      pail.warn(
+        `${app.appName}: ${missingModels.length} 个 domain 缺 <domain>.model.ts(HTTP 契约层)`,
+      );
+      for (const m of missingModels) {
+        console.log(chalk.dim(`    缺 ${m}`));
+      }
+      console.log(
+        chalk.dim(`    补齐: api-gen gen-zschema --domain <domain> --app ${app.appName}`),
+      );
+    }
 
     // b2b-api 时检测 health controller(单独 export,不进 applyAllModules 链)
     let healthName: string | null = null;

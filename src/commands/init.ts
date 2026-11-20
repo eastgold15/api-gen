@@ -2,7 +2,7 @@ import { ensureDirSync } from "@visulima/fs";
 import { pail } from "@visulima/pail";
 import { dirname, resolve } from "@visulima/path";
 import { existsSync, writeFileSync } from "node:fs";
-import type { ApiConfig } from "../types/api-gen.json.js";
+import { DEFAULT_HOOK_CONFIG, type ApiConfig } from "../types/api-gen.json.js";
 
 const DEFAULT_CONFIG: ApiConfig = {
   ai: {
@@ -30,6 +30,13 @@ const DEFAULT_CONFIG: ApiConfig = {
       { type: "prepend", content: "/** biome-ignore-all lint/style/useNamingConvention: 契约文件固定约束 */" },
     ],
   ],
+  // 前端 hook 生成配置(gen-hook 用)
+  // apiHooksImport 留空 = 不剥壳,直接用 @tanstack/react-query 的 useQuery / useMutation
+  hooks: {
+    apiHooksImport: DEFAULT_HOOK_CONFIG.apiHooksImport,
+    rpcImport: DEFAULT_HOOK_CONFIG.rpcImport,
+    staleTime: DEFAULT_HOOK_CONFIG.staleTime,
+  },
 };
 
 // ---------------------------------------------------------------------------

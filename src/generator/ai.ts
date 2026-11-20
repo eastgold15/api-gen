@@ -263,7 +263,8 @@ export function buildSystemPrompt(layout: ProjectLayout): string {
   lines.push("2. 严格遵循项目现有命名规范。");
   lines.push("3. 尽可能复用已有数据表与合约，禁止重复定义。");
   lines.push("4. 数据表使用 Drizzle ORM 标准写法（pgTable、uuid、text、timestamp 等）。");
-  lines.push("5. 接口合约使用项目统一 Zod 模板格式。");
+  lines.push("5. 契约分两层：实体层 zschema（只放全字段）与 HTTP 契约层 `<domain>.model.ts`（裁剪后的 body/query/params/response）。");
+  lines.push("6. HTTP 契约层用 `XxxModel` + `XxxModelContract` 命名，响应一律带信封（ResultSchema / PageResultSchema）。");
 
   return lines.join("\n");
 }
@@ -318,7 +319,10 @@ export function buildGenerationPrompt(
           "tables/example.table.ts": "// Drizzle pgTable 表定义代码 ...",
         },
         contractAdditions: {
-          "modules/example.contract.ts": "// Zod 接口合约代码 ...",
+          "packages/shared-types/src/zschema/example.zschema.ts": "// 实体层 Zod（只放全字段）...",
+        },
+        modelAdditions: {
+          "apps/b2b-api/src/modules/example/example.model.ts": "// HTTP 契约层（body/query/params/response）...",
         },
         summary: "生成内容简要说明",
       },
@@ -331,7 +335,8 @@ export function buildGenerationPrompt(
   lines.push("### 字段说明");
   lines.push("");
   lines.push("- `schemaAdditions`：文件相对路径 => 文件内容，存放新增/修改的数据表定义。");
-  lines.push("- `contractAdditions`：文件相对路径 => 文件内容，存放新增/修改的 Zod 接口合约。");
+  lines.push("- `contractAdditions`：文件相对路径 => 文件内容，存放**实体层** Zod（只放全字段 Entity / Insert / Query）。");
+  lines.push("- `modelAdditions`：文件相对路径 => 文件内容，存放**HTTP 契约层** `<domain>.model.ts`（XxxModel + XxxModelContract）。");
   lines.push("- `summary`：一段文字说明本次生成的内容与设计思路。");
   lines.push("");
   lines.push("## 硬性约束");
@@ -339,8 +344,11 @@ export function buildGenerationPrompt(
   lines.push("1. 所有数据表必须设置主键（uuid / serial 自增）。");
   lines.push("2. 每张表强制包含 createdAt、updatedAt 时间戳字段。");
   lines.push("3. 外键关联必须匹配上文已存在的数据表。");
-  lines.push("4. 合约文件统一模板：包含 Response、Create、Update、Patch、ListQuery、ListResponse 类型。");
-  lines.push("5. 仅返回纯 JSON，禁止 markdown、额外注释、解释文本。");
+  lines.push("4. 实体层 zschema **不写** HTTP 契约（不要有 Create / Update / ListQuery / ListResponse / Response）。");
+  lines.push("5. HTTP 契约写进 `<domain>.model.ts`：body / query / params / response 一律带信封（ResultSchema / PageResultSchema）。");
+  lines.push("6. 创建 / 更新体用白名单（.pick() / .omit()）排除服务端字段；响应用 .pick() 只暴露真正返回的列。");
+  lines.push("7. query 的数字 / 布尔必须能接字符串（z.coerce.number() 或 QueryShape()）—— Elysia 对 Zod 不做类型转换。");
+  lines.push("8. 仅返回纯 JSON，禁止 markdown、额外注释、解释文本。");
 
   return lines.join("\n");
 }
